@@ -36,16 +36,16 @@ export default function Members() {
   const filtered = filter === "All" ? MEMBERS : MEMBERS.filter((m) => m.role === filter);
 
   return (
-    <section id="members" className="py-24 sm:py-32 bg-[#F4F2FF]" ref={ref}>
+    <section id="members" className="py-24 sm:py-32 bg-[#FFF8EE]" ref={ref}>
       <div className="max-w-6xl mx-auto px-6">
         <div className={`text-center ${visible ? "animate-fade-in-up" : "opacity-0"}`}>
-          <span className="text-[#6C5CE7] font-semibold text-sm uppercase tracking-widest">
+          <span className="text-[#F5A623] font-semibold text-sm uppercase tracking-widest">
             Team Members
           </span>
-          <h2 className="mt-4 text-3xl sm:text-4xl font-bold text-[#2D2B55]">
+          <h2 className="mt-4 text-3xl sm:text-4xl font-bold text-[#1E1E1E]">
             팀 HARIBO
           </h2>
-          <p className="mt-4 text-[#64748B] text-lg">
+          <p className="mt-4 text-[#6B7280] text-lg">
             GOMS를 함께 만들어가는 멤버들입니다
           </p>
         </div>
@@ -57,8 +57,8 @@ export default function Members() {
               onClick={() => setFilter(role)}
               className={`px-5 py-2 rounded-full text-sm font-medium transition-all ${
                 filter === role
-                  ? "bg-[#6C5CE7] text-white shadow-md shadow-[#6C5CE7]/25"
-                  : "bg-white text-[#64748B] hover:bg-[#6C5CE7]/5 hover:text-[#6C5CE7] border border-gray-200"
+                  ? "bg-[#F5A623] text-white shadow-md shadow-[#F5A623]/25"
+                  : "bg-white text-[#6B7280] hover:bg-[#F5A623]/5 hover:text-[#F5A623] border border-gray-200"
               }`}
             >
               {role}
@@ -82,12 +82,12 @@ export default function Members() {
                 alt={member.name}
                 width={80}
                 height={80}
-                className="mx-auto rounded-full ring-2 ring-gray-100 group-hover:ring-[#6C5CE7]/30 transition-all"
+                className="mx-auto rounded-full ring-2 ring-gray-100 group-hover:ring-[#F5A623]/30 transition-all"
               />
-              <p className="mt-4 font-bold text-[#2D2B55] group-hover:text-[#6C5CE7] transition-colors">
+              <p className="mt-4 font-bold text-[#1E1E1E] group-hover:text-[#F5A623] transition-colors">
                 {member.name}
               </p>
-              <p className="mt-1 text-sm text-[#64748B]">@{member.github}</p>
+              <p className="mt-1 text-sm text-[#6B7280]">@{member.github}</p>
               <span className={`mt-3 inline-block px-3 py-1 rounded-full text-xs font-medium ${ROLE_COLORS[member.role]}`}>
                 {member.role}
               </span>

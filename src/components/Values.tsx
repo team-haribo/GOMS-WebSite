@@ -27,10 +27,10 @@ export default function Values() {
     <section id="values" className="py-24 sm:py-32" ref={ref}>
       <div className="max-w-6xl mx-auto px-6">
         <div className={`text-center ${visible ? "animate-fade-in-up" : "opacity-0"}`}>
-          <span className="text-[#6C5CE7] font-semibold text-sm uppercase tracking-widest">
+          <span className="text-[#F5A623] font-semibold text-sm uppercase tracking-widest">
             Our Values
           </span>
-          <h2 className="mt-4 text-3xl sm:text-4xl font-bold text-[#2D2B55]">
+          <h2 className="mt-4 text-3xl sm:text-4xl font-bold text-[#1E1E1E]">
             GOMS가 추구하는 가치
           </h2>
         </div>
@@ -43,11 +43,11 @@ export default function Values() {
                 visible ? `animate-fade-in-up delay-${(i + 2) * 100}` : "opacity-0"
               }`}
             >
-              <div className="w-14 h-14 rounded-2xl bg-[#6C5CE7]/10 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">
+              <div className="w-14 h-14 rounded-2xl bg-[#F5A623]/10 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">
                 {v.icon}
               </div>
-              <h3 className="mt-6 text-xl font-bold text-[#2D2B55]">{v.title}</h3>
-              <p className="mt-3 text-[#64748B] leading-relaxed">{v.desc}</p>
+              <h3 className="mt-6 text-xl font-bold text-[#1E1E1E]">{v.title}</h3>
+              <p className="mt-3 text-[#6B7280] leading-relaxed">{v.desc}</p>
             </div>
           ))}
         </div>

@@ -18,17 +18,17 @@ export default function Header() {
       }`}
     >
       <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-        <a href="#" className="text-xl font-bold text-[#2D2B55] tracking-tight">
+        <a href="#" className="text-xl font-bold text-[#1E1E1E] tracking-tight">
           GOMS
         </a>
-        <nav className="hidden sm:flex items-center gap-8 text-sm font-medium text-[#64748B]">
-          <a href="#about" className="hover:text-[#6C5CE7] transition-colors">
+        <nav className="hidden sm:flex items-center gap-8 text-sm font-medium text-[#6B7280]">
+          <a href="#about" className="hover:text-[#F5A623] transition-colors">
             소개
           </a>
-          <a href="#values" className="hover:text-[#6C5CE7] transition-colors">
+          <a href="#values" className="hover:text-[#F5A623] transition-colors">
             가치
           </a>
-          <a href="#members" className="hover:text-[#6C5CE7] transition-colors">
+          <a href="#members" className="hover:text-[#F5A623] transition-colors">
             멤버
           </a>
         </nav>
@@ -36,7 +36,7 @@ export default function Header() {
           href="https://github.com/team-haribo"
           target="_blank"
           rel="noopener noreferrer"
-          className="px-4 py-2 rounded-full bg-[#6C5CE7] text-white text-sm font-medium hover:bg-[#5A4BD1] transition-colors"
+          className="px-4 py-2 rounded-full bg-[#F5A623] text-white text-sm font-medium hover:bg-[#E8961A] transition-colors"
         >
           GitHub
         </a>
