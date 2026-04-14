@@ -20,6 +20,7 @@ const VERSIONS = [
     ios: "https://apps.apple.com/kr/app/goms/id6449974156",
     android:
       "https://play.google.com/store/apps/details?id=com.goms.presentation&hl=en-KR",
+    mockups: [] as string[],
     screenshots: [
       "https://github.com/team-goms/GOMS-Android/assets/84944098/d3b3cd2f-1233-4abe-9f79-3af32ab36f97",
       "https://github.com/team-goms/GOMS-Android/assets/84944098/d5b743b8-1ed7-4aea-9584-acd4a1cb7a42",
@@ -43,11 +44,8 @@ const VERSIONS = [
     ios: "https://apps.apple.com/kr/app/goms/id6502936560",
     android:
       "https://play.google.com/store/apps/details?id=com.goms.goms_android_v2",
-    screenshots: [
-      "https://github.com/user-attachments/assets/3acafde8-7f29-49f6-8c76-c775f34d9ebf",
-      "https://github.com/user-attachments/assets/983f3a0b-acac-4612-8699-0fbd9656dd20",
-      "https://github.com/user-attachments/assets/035f0bbc-efd1-444a-94bb-e8c4439d3d30",
-    ],
+    screenshots: [],
+    mockups: ["/v2-mockup-1.png", "/v2-mockup-2.png"],
   },
   {
     version: "V3",
@@ -65,6 +63,7 @@ const VERSIONS = [
     tech: ["Android (New)", "iOS (SwiftUI)", "Spring Boot"],
     ios: null,
     android: null,
+    mockups: [] as string[],
     screenshots: [],
   },
 ];
@@ -152,7 +151,27 @@ export default function Versions() {
                     ))}
                   </div>
 
-                  {/* Screenshots */}
+                  {/* Mockup Images (V2) */}
+                  {v.mockups.length > 0 && (
+                    <div className="mt-5 flex gap-4 overflow-x-auto pb-2 -mx-2 px-2">
+                      {v.mockups.map((src, si) => (
+                        <div
+                          key={si}
+                          className="shrink-0 rounded-xl overflow-hidden bg-[#1E1E1E] shadow-lg"
+                        >
+                          <Image
+                            src={src}
+                            alt={`${v.version} mockup ${si + 1}`}
+                            width={280}
+                            height={500}
+                            className="w-auto h-[280px] object-contain"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Screenshots (V1) */}
                   {v.screenshots.length > 0 && (
                     <div className="mt-5 flex gap-3 overflow-x-auto pb-2 -mx-2 px-2">
                       {v.screenshots.map((src, si) => (
