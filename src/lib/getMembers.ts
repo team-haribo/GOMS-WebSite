@@ -31,7 +31,7 @@ export async function getMembers(): Promise<Member[]> {
   try {
     const res = await fetch(
       `https://api.github.com/orgs/${ORG}/members?per_page=100`,
-      { headers, next: { revalidate: 3600 } },
+      { headers, next: { revalidate: 300, tags: ["members"] } },
     );
     if (res.ok) {
       const data: GitHubMember[] = await res.json();
