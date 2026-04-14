@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 
 export default function Hero() {
   return (
@@ -10,6 +11,18 @@ export default function Hero() {
         <div className="absolute -top-40 -right-40 w-96 h-96 bg-[#F5A623]/15 rounded-full blur-3xl animate-float" />
         <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-[#FF8C00]/15 rounded-full blur-3xl animate-float delay-300" />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-[#F5A623]/5 rounded-full blur-3xl" />
+      </div>
+
+      {/* GOMS logo watermark — offset to side, partially clipped */}
+      <div className="absolute -right-32 -bottom-32 sm:-right-48 sm:-bottom-48 pointer-events-none select-none">
+        <Image
+          src="/goms-logo.svg"
+          alt=""
+          width={700}
+          height={700}
+          priority={false}
+          className="w-[420px] sm:w-[600px] md:w-[700px] h-auto opacity-[0.04] invert -rotate-12"
+        />
       </div>
 
       <div className="relative z-10 text-center px-6 max-w-4xl mx-auto">
@@ -45,12 +58,26 @@ export default function Hero() {
 
         {/* CTA */}
         <div className="animate-fade-in-up delay-400 mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-          <a
-            href="#about"
-            className="px-8 py-3.5 rounded-full bg-[#F5A623] text-white font-semibold hover:bg-[#E8961A] transition-all hover:shadow-lg hover:shadow-[#F5A623]/25"
+          <Link
+            href="/apply"
+            prefetch
+            className="group px-8 py-3.5 rounded-full bg-[#F5A623] text-white font-semibold hover:bg-[#E8961A] hover:scale-[1.03] transition-all hover:shadow-lg hover:shadow-[#F5A623]/25 inline-flex items-center gap-2"
           >
-            더 알아보기
-          </a>
+            지원하기
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="group-hover:translate-x-0.5 transition-transform"
+            >
+              <path d="M5 12h14M12 5l7 7-7 7" />
+            </svg>
+          </Link>
           <a
             href="https://github.com/team-haribo"
             target="_blank"

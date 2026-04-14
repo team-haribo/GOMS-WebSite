@@ -27,7 +27,38 @@ export default function RootLayout({
           href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"
         />
       </head>
-      <body className="min-h-full flex flex-col font-pretendard">{children}</body>
+      <body className="min-h-full flex flex-col font-pretendard">
+        {/* 새로고침 시 깜빡임 없이 마지막 스크롤 위치로 즉시 복원 */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  if ('scrollRestoration' in history) {
+                    history.scrollRestoration = 'manual';
+                  }
+                  var y = sessionStorage.getItem('goms:scrollY');
+                  if (y && window.location.pathname === '/') {
+                    document.documentElement.style.scrollBehavior = 'auto';
+                    var scrollNow = function() {
+                      window.scrollTo(0, parseInt(y, 10));
+                      requestAnimationFrame(function() {
+                        document.documentElement.style.scrollBehavior = '';
+                      });
+                    };
+                    if (document.readyState === 'loading') {
+                      document.addEventListener('DOMContentLoaded', scrollNow);
+                    } else {
+                      scrollNow();
+                    }
+                  }
+                } catch (e) {}
+              })();
+            `,
+          }}
+        />
+        {children}
+      </body>
     </html>
   );
 }

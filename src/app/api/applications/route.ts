@@ -1,0 +1,181 @@
+import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import {
+  addApplication,
+  getApplications,
+  getRoleStatus,
+  getFormConfig,
+  ROLE_KEYS,
+  type RoleKey,
+  type FormField,
+  type Application,
+} from "@/lib/storage";
+import {
+  verifyApplicantToken,
+  APPLICANT_COOKIE_NAME,
+  ALLOWED_APPLICANT_DOMAIN,
+} from "@/lib/auth";
+
+export async function GET() {
+  const list = await getApplications();
+  return NextResponse.json({ applications: list });
+}
+
+// Built-in field IDs that map to Application columns
+const BUILTIN_IDS = [
+  "name",
+  "studentId",
+  "generation",
+  "role",
+  "github",
+  "introduction",
+  "motivation",
+  "wantedFeatures",
+  "portfolio",
+] as const;
+
+const URL_REGEX = /^(https?:\/\/|www\.)[^\s]+$/i;
+
+function validateField(field: FormField, raw: unknown): string | null {
+  const value = typeof raw === "string" ? raw.trim() : "";
+
+  if (!value) {
+    if (field.required) return `${field.label}을(를) 입력해주세요.`;
+    return null;
+  }
+
+  if (field.type === "role") {
+    if (!ROLE_KEYS.includes(value as RoleKey)) {
+      return `${field.label}이(가) 잘못됐어요.`;
+    }
+    return null;
+  }
+
+  if (field.type === "url") {
+    try {
+      new URL(value.startsWith("http") ? value : `https://${value}`);
+    } catch {
+      return `${field.label}은(는) 올바른 URL이어야 해요.`;
+    }
+    return null;
+  }
+
+  if (field.type === "username") {
+    if (URL_REGEX.test(value) || value.includes("/")) {
+      return `${field.label}에는 URL이 아닌 아이디만 입력해주세요.`;
+    }
+    return null;
+  }
+
+  if (field.pattern) {
+    try {
+      const re = new RegExp(field.pattern);
+      if (!re.test(value))
+        return field.patternError ?? `${field.label} 형식이 올바르지 않아요.`;
+    } catch {
+      /* invalid regex, skip */
+    }
+  }
+
+  if (field.minLength !== undefined && value.length < field.minLength) {
+    return `${field.label}은(는) 최소 ${field.minLength}자 이상이어야 해요. (현재 ${value.length}자)`;
+  }
+  if (field.maxLength !== undefined && value.length > field.maxLength) {
+    return `${field.label}은(는) 최대 ${field.maxLength}자까지 입력할 수 있어요. (현재 ${value.length}자)`;
+  }
+
+  return null;
+}
+
+export async function POST(req: Request) {
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid body" }, { status: 400 });
+  }
+
+  const config = await getFormConfig();
+
+  // 1. Email auth (optional)
+  let verifiedEmail: string | undefined;
+  if (config.requireEmailAuth) {
+    const jar = await cookies();
+    const token = jar.get(APPLICANT_COOKIE_NAME)?.value;
+    const session = await verifyApplicantToken(token);
+    if (!session) {
+      return NextResponse.json(
+        { error: "Google 로그인이 필요해요." },
+        { status: 401 },
+      );
+    }
+    if (!session.email.endsWith(`@${ALLOWED_APPLICANT_DOMAIN}`)) {
+      return NextResponse.json(
+        {
+          error: `광주소프트웨어마이스터고(@${ALLOWED_APPLICANT_DOMAIN}) 계정으로만 지원할 수 있어요.`,
+        },
+        { status: 403 },
+      );
+    }
+    verifiedEmail = session.email;
+  }
+
+  // 2. Privacy consent
+  if (config.privacyPolicy.enabled && body.privacyAgreed !== true) {
+    return NextResponse.json(
+      { error: "개인정보 수집 및 이용에 동의해야 지원할 수 있어요." },
+      { status: 400 },
+    );
+  }
+
+  // 3. Validate each field per config
+  const fields = body.fields as Record<string, unknown> | undefined;
+  if (!fields || typeof fields !== "object") {
+    return NextResponse.json(
+      { error: "입력 데이터가 없어요." },
+      { status: 400 },
+    );
+  }
+
+  for (const field of config.fields) {
+    const err = validateField(field, fields[field.id]);
+    if (err) return NextResponse.json({ error: err }, { status: 400 });
+  }
+
+  // 4. Check role status
+  const roleValue =
+    typeof fields.role === "string" ? (fields.role as string).trim() : "";
+  if (roleValue) {
+    const status = await getRoleStatus();
+    if (!status[roleValue as RoleKey]) {
+      return NextResponse.json(
+        { error: "해당 직군은 현재 모집 마감 상태예요." },
+        { status: 400 },
+      );
+    }
+  }
+
+  // 5. Build application — map built-in fields to columns, rest to custom
+  const app: Omit<Application, "id" | "createdAt"> = {
+    custom: {},
+    privacyAgreed: true,
+    email: verifiedEmail,
+  };
+
+  const builtinSet = new Set<string>(BUILTIN_IDS);
+
+  for (const field of config.fields) {
+    const raw = fields[field.id];
+    const value = typeof raw === "string" ? raw.trim() : "";
+    if (!value) continue;
+
+    if (builtinSet.has(field.id)) {
+      (app as Record<string, unknown>)[field.id] = value;
+    } else {
+      app.custom![field.id] = value;
+    }
+  }
+
+  const saved = await addApplication(app);
+  return NextResponse.json({ ok: true, application: saved });
+}
