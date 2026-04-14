@@ -3,13 +3,54 @@
 import Image from "next/image";
 import { useEffect, useState } from "react";
 
+const NAV_ITEMS = [
+  { id: "about", label: "About" },
+  { id: "features", label: "Features" },
+  { id: "versions", label: "Versions" },
+  { id: "values", label: "Values" },
+  { id: "members", label: "Members" },
+];
+
 export default function Header() {
   const [scrolled, setScrolled] = useState(false);
+  const [active, setActive] = useState<string>("");
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 50);
+    const onScroll = () => {
+      setScrolled(window.scrollY > 50);
+      // 새로고침 복원용 — 스크롤 위치 저장
+      sessionStorage.setItem("goms:scrollY", String(window.scrollY));
+    };
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // Scroll spy: 화면 상단(40%) 기준으로 가장 보이는 섹션 찾기
+  useEffect(() => {
+    const sections = NAV_ITEMS.map((item) =>
+      document.getElementById(item.id),
+    ).filter((el): el is HTMLElement => el !== null);
+
+    if (sections.length === 0) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        // 보이는 섹션 중 가장 위에 있는 것 선택
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        if (visible[0]) {
+          setActive(visible[0].target.id);
+        }
+      },
+      {
+        rootMargin: "-30% 0px -60% 0px",
+        threshold: 0,
+      },
+    );
+
+    sections.forEach((s) => observer.observe(s));
+    return () => observer.disconnect();
   }, []);
 
   return (
@@ -19,40 +60,50 @@ export default function Header() {
       }`}
     >
       <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-        <a href="#" className="flex items-center gap-2.5">
+        <a
+          href="#"
+          className="group flex items-center gap-2.5 px-2 py-1 -mx-2 -my-1 rounded-xl hover:bg-[#F5A623]/10 active:scale-95 transition-all duration-200"
+        >
           <Image
             src="/goms-logo.svg"
             alt="GOMS"
             width={32}
             height={32}
-            className="rounded-lg"
+            className="rounded-lg group-hover:scale-110 group-hover:rotate-[-6deg] group-hover:drop-shadow-[0_4px_12px_rgba(245,166,35,0.4)] transition-all duration-300"
           />
-          <span className="text-xl font-bold text-[#1E1E1E] tracking-tight">
+          <span className="text-xl font-bold text-[#1E1E1E] tracking-tight group-hover:text-[#F5A623] transition-colors">
             GOMS
           </span>
         </a>
-        <nav className="hidden sm:flex items-center gap-8 text-sm font-medium text-[#6B7280]">
-          <a href="#about" className="hover:text-[#F5A623] transition-colors">
-            About
-          </a>
-          <a href="#versions" className="hover:text-[#F5A623] transition-colors">
-            Versions
-          </a>
-          <a href="#values" className="hover:text-[#F5A623] transition-colors">
-            Values
-          </a>
-          <a href="#members" className="hover:text-[#F5A623] transition-colors">
-            Members
-          </a>
+        <nav className="hidden sm:flex items-center gap-1 text-sm font-medium">
+          {NAV_ITEMS.map((item) => {
+            const isActive = active === item.id;
+            return (
+              <a
+                key={item.id}
+                href={`#${item.id}`}
+                className={`relative px-3 py-2 rounded-full transition-all duration-300 ${
+                  isActive
+                    ? "text-[#F5A623] font-semibold"
+                    : "text-[#6B7280] hover:text-[#1E1E1E]"
+                }`}
+              >
+                {item.label}
+                {isActive && (
+                  <span className="absolute inset-0 -z-10 rounded-full bg-[#F5A623]/10" />
+                )}
+              </a>
+            );
+          })}
         </nav>
         <a
           href="https://github.com/team-haribo"
           target="_blank"
           rel="noopener noreferrer"
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+          className={`group flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium hover:scale-105 hover:shadow-lg hover:shadow-black/20 active:scale-95 transition-all duration-200 ${
             scrolled
-              ? "bg-[#24292f] text-white hover:bg-[#1b1f23]"
-              : "bg-[#24292f]/90 text-white hover:bg-[#24292f]"
+              ? "bg-[#24292f] text-white hover:bg-[#F5A623]"
+              : "bg-[#24292f]/90 text-white hover:bg-[#F5A623]"
           }`}
         >
           <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24">
