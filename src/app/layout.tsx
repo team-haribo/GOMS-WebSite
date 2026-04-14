@@ -1,14 +1,69 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
+const SITE_URL = "https://team-haribo.vercel.app";
+
 export const metadata: Metadata = {
-  title: "GOMS - 광주소프트웨어마이스터고 외출제 통합 관리 시스템",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: "GOMS - 광주소프트웨어마이스터고 외출제 통합 관리 시스템",
+    template: "%s | GOMS",
+  },
   description:
-    "외출제를 QR로 간편하게. 광주소프트웨어마이스터고 외출제 통합 관리 시스템 GOMS 개발팀 HARIBO입니다.",
+    "외출제를 QR로 간편하게. 광주소프트웨어마이스터고등학교 외출제 통합 관리 시스템 GOMS. Team HARIBO가 만든 오픈소스 프로젝트입니다.",
+  keywords: [
+    "GOMS",
+    "광주소프트웨어마이스터고",
+    "광주소프트웨어마이스터고등학교",
+    "GSM",
+    "외출제",
+    "외출 관리",
+    "QR 외출",
+    "Team HARIBO",
+    "team haribo",
+    "학교 외출 시스템",
+  ],
+  authors: [{ name: "Team HARIBO", url: "https://github.com/team-haribo" }],
+  creator: "Team HARIBO",
+  publisher: "Team HARIBO",
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+    },
+  },
   openGraph: {
     title: "GOMS - 외출제를 QR로 간편하게",
-    description: "광주소프트웨어마이스터고 외출제 통합 관리 시스템",
+    description:
+      "광주소프트웨어마이스터고등학교 외출제 통합 관리 시스템. Team HARIBO가 만들어가는 오픈소스 프로젝트입니다.",
+    url: SITE_URL,
+    siteName: "GOMS",
     type: "website",
+    locale: "ko_KR",
+    images: [
+      {
+        url: "/goms-logo.png",
+        width: 1200,
+        height: 630,
+        alt: "GOMS - 광주소프트웨어마이스터고 외출제 통합 관리 시스템",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "GOMS - 외출제를 QR로 간편하게",
+    description: "광주소프트웨어마이스터고등학교 외출제 통합 관리 시스템",
+    images: ["/goms-logo.png"],
+  },
+  icons: {
+    icon: "/favicon.ico",
+  },
+  alternates: {
+    canonical: SITE_URL,
   },
 };
 
