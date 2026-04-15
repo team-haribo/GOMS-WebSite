@@ -2,14 +2,15 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import ApplyForm from "@/components/ApplyForm";
-import { getRoleStatus, type RoleKey } from "@/lib/storage";
-import { getRoleBySlug, APPLY_ROLES } from "@/lib/applyRoles";
+import RoleScheduleBanner from "@/components/RoleScheduleBanner";
+import {
+  getRoleBySlug,
+  getRoleStatus,
+  isRoleEffectivelyOpen,
+  type RoleKey,
+} from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
-
-export function generateStaticParams() {
-  return APPLY_ROLES.map((r) => ({ role: r.slug }));
-}
 
 export default async function ApplyRolePage({
   params,
@@ -17,14 +18,24 @@ export default async function ApplyRolePage({
   params: Promise<{ role: string }>;
 }) {
   const { role: slug } = await params;
-  const role = getRoleBySlug(slug);
+  const role = await getRoleBySlug(slug);
   if (!role) notFound();
 
   const status = await getRoleStatus();
-  const isOpen = (status as Record<string, boolean>)[role.label] ?? true;
+  const isOpen = isRoleEffectivelyOpen(role);
+  const now = new Date();
+  const opensAt = role.openAt ? new Date(role.openAt) : null;
+  const closesAt = role.closeAt ? new Date(role.closeAt) : null;
+  let blockReason: "notYet" | "ended" | "closed" | null = null;
+  if (!isOpen) {
+    if (opensAt && now < opensAt) blockReason = "notYet";
+    else if (closesAt && now >= closesAt) blockReason = "ended";
+    else blockReason = "closed";
+  }
 
   return (
-    <main className="min-h-screen bg-[#FFF8EE] animate-page-in">
+    <>
+    <main className="min-h-screen bg-[#FFF8EE] animate-page-in relative">
       {/* Header */}
       <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-lg border-b border-gray-100">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
@@ -64,6 +75,14 @@ export default async function ApplyRolePage({
         </div>
       </header>
 
+      <div
+        className={
+          blockReason
+            ? "blur-xl saturate-50 pointer-events-none select-none"
+            : ""
+        }
+        aria-hidden={blockReason ? true : undefined}
+      >
       {/* Hero */}
       <section
         className={`relative pt-20 pb-16 sm:pt-28 sm:pb-20 overflow-hidden bg-gradient-to-br ${role.bg}`}
@@ -104,6 +123,14 @@ export default async function ApplyRolePage({
               </span>
             ))}
           </div>
+
+          {(role.openAt || role.closeAt) && (
+            <RoleScheduleBanner
+              openAt={role.openAt}
+              closeAt={role.closeAt}
+              color={role.color}
+            />
+          )}
         </div>
       </section>
 
@@ -183,45 +210,7 @@ export default async function ApplyRolePage({
             </p>
           </div>
 
-          {isOpen ? (
-            <ApplyForm
-              status={status as Record<RoleKey, boolean>}
-              lockedRole={role.label as RoleKey}
-            />
-          ) : (
-            <div className="rounded-[32px] bg-white border border-gray-100 p-10 sm:p-14 text-center shadow-sm">
-              <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-gray-100 mb-5">
-                <svg
-                  width="22"
-                  height="22"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#6B7280"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <circle cx="12" cy="12" r="10" />
-                  <path d="M15 9l-6 6M9 9l6 6" />
-                </svg>
-              </div>
-              <h3 className="text-2xl font-black text-[#1E1E1E]">
-                아쉽게도 지금은 모집 마감이에요.
-              </h3>
-              <p className="mt-3 text-gray-500">
-                다음 모집 시즌에 다시 만나요.
-              </p>
-              <Link
-                href="/apply"
-                className="mt-7 inline-flex items-center gap-1.5 text-sm font-bold text-[#F5A623] hover:underline"
-              >
-                다른 직군 보기
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M5 12h14M12 5l7 7-7 7" />
-                </svg>
-              </Link>
-            </div>
-          )}
+          <ApplyForm status={status} lockedRole={role.label} />
         </div>
       </section>
 
@@ -239,6 +228,123 @@ export default async function ApplyRolePage({
           </a>
         </div>
       </footer>
+      </div>
     </main>
+
+    {blockReason && (
+      <ClosedOverlay
+        reason={blockReason}
+        role={{
+          label: role.label,
+          color: role.color,
+          openAt: role.openAt ?? null,
+          closeAt: role.closeAt ?? null,
+        }}
+      />
+    )}
+    </>
   );
 }
+
+function ClosedOverlay({
+  reason,
+  role,
+}: {
+  reason: "notYet" | "ended" | "closed";
+  role: {
+    label: string;
+    color: string;
+    openAt: string | null;
+    closeAt: string | null;
+  };
+}) {
+  const formatDateTime = (iso: string): string => {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    const now = new Date();
+    const sameYear = d.getFullYear() === now.getFullYear();
+    const month = d.getMonth() + 1;
+    const day = d.getDate();
+    const weekday = ["일", "월", "화", "수", "목", "금", "토"][d.getDay()];
+    const yearPart = sameYear ? "" : `${d.getFullYear()}년 `;
+    const hour = d.getHours();
+    const min = d.getMinutes();
+    const ampm = hour < 12 ? "오전" : "오후";
+    const h12 = hour % 12 || 12;
+    const minStr = min.toString().padStart(2, "0");
+    return `${yearPart}${month}월 ${day}일 (${weekday}) ${ampm} ${h12}:${minStr}`;
+  };
+
+  const subtitles: Record<typeof reason, string> = {
+    notYet: "아쉽게도 아직 지원폼이 열리지 않았어요.",
+    ended: "아쉽게도 이번 모집은 이미 끝났어요.",
+    closed: `아쉽게도 ${role.label} 직군은 지금 모집 중이 아니에요.`,
+  };
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center px-6 bg-white/55 backdrop-blur-md">
+      <div className="w-full max-w-lg text-center animate-fade-in-up">
+        <p
+          className="text-[10px] font-black tracking-[0.22em]"
+          style={{ color: role.color }}
+        >
+          {role.label.toUpperCase()}
+        </p>
+        <h2 className="mt-3 text-2xl sm:text-3xl font-black text-[#1E1E1E] tracking-tight leading-snug">
+          이런 식의 URL 접근은
+          <br />
+          흥미롭네요...
+        </h2>
+        <p className="mt-4 text-sm sm:text-base text-gray-600 leading-relaxed">
+          {subtitles[reason]}
+        </p>
+
+        {(role.openAt || role.closeAt) && (
+          <div className="mt-6 inline-flex items-center gap-4 text-[11px] text-gray-500">
+            {role.openAt && (
+              <span>
+                <span className="text-gray-400">오픈 </span>
+                <span className="font-bold text-[#1E1E1E]">
+                  {formatDateTime(role.openAt)}
+                </span>
+              </span>
+            )}
+            {role.openAt && role.closeAt && (
+              <span className="text-gray-300">·</span>
+            )}
+            {role.closeAt && (
+              <span>
+                <span className="text-gray-400">마감 </span>
+                <span className="font-bold text-[#1E1E1E]">
+                  {formatDateTime(role.closeAt)}
+                </span>
+              </span>
+            )}
+          </div>
+        )}
+
+        <div className="mt-7">
+          <Link
+            href="/apply"
+            className="inline-flex items-center gap-1.5 text-sm font-bold text-[#1E1E1E] hover:gap-2.5 transition-all"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M19 12H5M12 19l-7-7 7-7" />
+            </svg>
+            다른 직군 보러가기
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+

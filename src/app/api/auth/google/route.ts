@@ -5,6 +5,7 @@ import {
   APPLICANT_MAX_AGE,
   ALLOWED_APPLICANT_DOMAIN,
 } from "@/lib/auth";
+import { getFormConfig } from "@/lib/storage";
 
 interface GoogleTokenInfo {
   iss: string;
@@ -89,19 +90,22 @@ export async function POST(req: Request) {
     );
   }
 
-  // Validate domain
+  // Validate domain (only when the form requires @gsm.hs.kr auth)
   const email = (info.email || "").toLowerCase();
-  const isGsmHsKr =
-    info.hd === ALLOWED_APPLICANT_DOMAIN ||
-    email.endsWith(`@${ALLOWED_APPLICANT_DOMAIN}`);
+  const config = await getFormConfig();
+  if (config.requireEmailAuth) {
+    const isGsmHsKr =
+      info.hd === ALLOWED_APPLICANT_DOMAIN ||
+      email.endsWith(`@${ALLOWED_APPLICANT_DOMAIN}`);
 
-  if (!isGsmHsKr) {
-    return NextResponse.json(
-      {
-        error: `광주소프트웨어마이스터고등학교 계정(@${ALLOWED_APPLICANT_DOMAIN})으로만 지원할 수 있어요.`,
-      },
-      { status: 403 },
-    );
+    if (!isGsmHsKr) {
+      return NextResponse.json(
+        {
+          error: `광주소프트웨어마이스터고등학교 계정(@${ALLOWED_APPLICANT_DOMAIN})으로만 지원할 수 있어요.`,
+        },
+        { status: 403 },
+      );
+    }
   }
 
   // Create session cookie

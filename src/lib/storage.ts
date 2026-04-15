@@ -92,48 +92,292 @@ export async function deleteApplication(id: string): Promise<boolean> {
   return true;
 }
 
-// ================= Role status =================
+// ================= Roles =================
 
-export type RoleKey =
-  | "iOS"
-  | "Android"
-  | "Backend"
-  | "Flutter"
-  | "DevOps"
-  | "Design";
+export type RoleKey = string; // now dynamic — any admin-defined role
 
-export const ROLE_KEYS: RoleKey[] = [
-  "iOS",
-  "Android",
-  "Backend",
-  "Flutter",
-  "DevOps",
-  "Design",
-];
-
-export type RoleStatus = Record<RoleKey, boolean>;
-
-const DEFAULT_ROLE_STATUS: RoleStatus = {
-  iOS: true,
-  Android: true,
-  Backend: true,
-  Flutter: true,
-  DevOps: true,
-  Design: true,
-};
-
-export async function getRoleStatus(): Promise<RoleStatus> {
-  return readJson<RoleStatus>("role-status", DEFAULT_ROLE_STATUS);
+export interface RoleTalent {
+  title: string;
+  desc: string;
 }
 
+export interface Role {
+  slug: string; // URL slug, e.g. "ios", "backend"
+  label: string; // display label, e.g. "iOS", "Backend"
+  color: string; // hex
+  bg: string; // tailwind gradient classes, e.g. "from-orange-50 to-amber-50"
+  title: string; // big title on detail page
+  subtitle: string; // one-liner
+  intro: string; // paragraph
+  stack: string[]; // tech tags
+  talents: RoleTalent[]; // 인재상
+  open: boolean; // manual open/close switch
+  openAt?: string | null; // ISO datetime — applications automatically open at this time
+  closeAt?: string | null; // ISO datetime — applications automatically close at this time
+}
+
+export type RoleStatus = Record<string, boolean>;
+
+// Default role seed (used if no roles stored yet)
+const DEFAULT_ROLES: Role[] = [
+  {
+    slug: "ios",
+    label: "iOS",
+    color: "#F5A623",
+    bg: "from-orange-50 to-amber-50",
+    title: "iOS Developer",
+    subtitle: "Swift로 Apple 생태계의 앱을 만들어요.",
+    intro:
+      "UIKit·SwiftUI·Combine으로 사용자가 오래 쓰고 싶어지는 앱을 만들어요. 디테일과 애니메이션, 그리고 새로운 기술 도입에 열려 있는 사람을 찾고 있어요.",
+    stack: ["Swift", "UIKit", "SwiftUI", "Combine"],
+    talents: [
+      {
+        title: "Swift에 대한 호기심",
+        desc: "Swift 문법과 Apple의 API에 흥미가 있고, 공식 문서를 읽는 걸 두려워하지 않아요.",
+      },
+      {
+        title: "사용자 경험에 대한 집착",
+        desc: "버튼 하나, 애니메이션 하나, 트랜지션 하나에 '왜 이렇게 동작해야 하는지' 고민하는 사람.",
+      },
+      {
+        title: "새로운 기술에 대한 열린 마음",
+        desc: "UIKit에서 SwiftUI로, Combine에서 async/await로, 변화를 기회로 보는 사람.",
+      },
+    ],
+    open: true,
+  },
+  {
+    slug: "android",
+    label: "Android",
+    color: "#3B82F6",
+    bg: "from-blue-50 to-indigo-50",
+    title: "Android Developer",
+    subtitle: "Kotlin과 Compose로 안드로이드 앱을 만들어요.",
+    intro:
+      "Jetpack Compose·Coroutines·Flow로 모던한 안드로이드 앱을 만들어요. Material Design을 존중하면서도 GOMS만의 개성을 녹여낼 줄 아는 사람을 찾아요.",
+    stack: ["Kotlin", "Jetpack Compose", "Coroutines", "Flow"],
+    talents: [
+      {
+        title: "Kotlin에 대한 애정",
+        desc: "Java에서 Kotlin으로 넘어오는 과정 자체가 재미있는 사람. 확장 함수나 코루틴이 예뻐 보이는 사람.",
+      },
+      {
+        title: "Compose·Material Design 이해",
+        desc: "선언형 UI의 장점을 이해하고, Material Design 가이드와 디자인 시스템을 존중하는 사람.",
+      },
+      {
+        title: "새로운 기술 도입에 적극적",
+        desc: "매년 쏟아지는 Jetpack 라이브러리를 따라가고, 팀에 공유하는 걸 즐기는 사람.",
+      },
+    ],
+    open: true,
+  },
+  {
+    slug: "backend",
+    label: "Backend",
+    color: "#10B981",
+    bg: "from-emerald-50 to-teal-50",
+    title: "Backend Developer",
+    subtitle: "Spring Boot로 서버와 API를 설계해요.",
+    intro:
+      "Kotlin·Spring Boot·JPA로 안정적인 REST API와 데이터베이스, 푸시 알림 시스템을 만들어요. 데이터의 흐름과 구조를 깊이 고민하는 사람을 찾아요.",
+    stack: ["Kotlin", "Spring Boot", "JPA", "MySQL"],
+    talents: [
+      {
+        title: "데이터 흐름에 대한 감각",
+        desc: "요청이 들어와서 응답이 나가기까지, 각 계층에서 무슨 일이 일어나는지 머릿속에 그릴 수 있는 사람.",
+      },
+      {
+        title: "견고한 설계에 대한 욕심",
+        desc: "당장 돌아가는 코드보다, 6개월 뒤에도 유지보수하기 쉬운 구조를 고민하는 사람.",
+      },
+      {
+        title: "문제 해결 능력",
+        desc: "버그가 발생했을 때 당황하지 않고, 로그와 스택 트레이스에서 단서를 찾는 사람.",
+      },
+    ],
+    open: true,
+  },
+  {
+    slug: "flutter",
+    label: "Flutter",
+    color: "#06B6D4",
+    bg: "from-cyan-50 to-sky-50",
+    title: "Flutter Developer",
+    subtitle: "Dart로 iOS와 Android를 한 번에 만들어요.",
+    intro:
+      "Flutter·Riverpod·Dio로 크로스 플랫폼 앱을 빠르게 만들어요. 하나의 코드베이스로 여러 플랫폼을 다루는 재미를 아는 사람을 찾아요.",
+    stack: ["Dart", "Flutter", "Riverpod", "Dio"],
+    talents: [
+      {
+        title: "크로스 플랫폼에 대한 관심",
+        desc: "iOS와 Android를 따로 만드는 것보다 하나로 만들고 싶은 이유가 명확한 사람.",
+      },
+      {
+        title: "위젯 트리 이해",
+        desc: "Flutter의 위젯 철학과 상태 관리 흐름을 이해하고, 직접 구조를 설계해보고 싶은 사람.",
+      },
+      {
+        title: "빠른 프로토타이핑 마인드",
+        desc: "'일단 만들어 보자'와 '설계를 먼저 하자' 사이의 균형을 잡을 줄 아는 사람.",
+      },
+    ],
+    open: true,
+  },
+  {
+    slug: "devops",
+    label: "DevOps",
+    color: "#8B5CF6",
+    bg: "from-violet-50 to-purple-50",
+    title: "DevOps Engineer",
+    subtitle: "배포와 인프라를 자동화해요.",
+    intro:
+      "Docker·GitHub Actions·AWS로 CI/CD 파이프라인과 서버 인프라를 관리해요. 서비스가 새벽에도 안정적으로 돌아가도록 책임지는 사람을 찾아요.",
+    stack: ["Docker", "GitHub Actions", "AWS", "Linux"],
+    talents: [
+      {
+        title: "자동화에 대한 집착",
+        desc: "같은 작업을 두 번 하느니 자동화 스크립트를 짜는 게 재밌는 사람.",
+      },
+      {
+        title: "안정성에 대한 책임감",
+        desc: "'서비스가 멈추면 안 된다'는 마음가짐으로, 장애 대응과 모니터링을 중요하게 생각하는 사람.",
+      },
+      {
+        title: "네트워크·리눅스 기초",
+        desc: "SSH, Docker, nginx, 기본적인 리눅스 명령어와 친한 사람. 아니면 친해지고 싶은 사람.",
+      },
+    ],
+    open: true,
+  },
+  {
+    slug: "design",
+    label: "Design",
+    color: "#EC4899",
+    bg: "from-pink-50 to-rose-50",
+    title: "UI/UX Designer",
+    subtitle: "Figma로 서비스의 얼굴을 만들어요.",
+    intro:
+      "Figma로 와이어프레임, 프로토타입, 디자인 시스템을 만들어요. 사용자의 관점에서 생각하고, 개발자와 함께 디테일을 맞춰가는 사람을 찾아요.",
+    stack: ["Figma", "Design System", "Prototype"],
+    talents: [
+      {
+        title: "사용자 관점에서 생각하는 힘",
+        desc: "'이 버튼을 처음 보는 사람은 어떻게 느낄까?'를 먼저 떠올리는 사람.",
+      },
+      {
+        title: "디자인 시스템에 대한 이해",
+        desc: "반복되는 요소에서 규칙을 찾고, 일관된 시스템을 만드는 걸 즐기는 사람.",
+      },
+      {
+        title: "개발자와의 협업",
+        desc: "개발이 가능한 디자인과 불가능한 디자인의 차이를 이해하고, 함께 절충점을 찾는 사람.",
+      },
+    ],
+    open: true,
+  },
+];
+
+function normalizeSlug(slug: string): string {
+  return slug
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/** Compute effective open state considering manual flag + scheduled windows */
+export function isRoleEffectivelyOpen(role: Role, now: Date = new Date()): boolean {
+  if (!role.open) return false;
+  if (role.openAt && now < new Date(role.openAt)) return false;
+  if (role.closeAt && now >= new Date(role.closeAt)) return false;
+  return true;
+}
+
+export async function getRoles(): Promise<Role[]> {
+  const stored = await readJson<Role[] | null>("roles", null);
+  if (stored && Array.isArray(stored) && stored.length > 0) return stored;
+  // Seed on first read
+  await writeJson("roles", DEFAULT_ROLES);
+  return DEFAULT_ROLES;
+}
+
+export async function getRoleBySlug(slug: string): Promise<Role | null> {
+  const list = await getRoles();
+  const normalized = normalizeSlug(slug);
+  return list.find((r) => r.slug === normalized) ?? null;
+}
+
+export async function addRole(role: Omit<Role, "slug"> & { slug: string }): Promise<Role[]> {
+  const list = await getRoles();
+  const slug = normalizeSlug(role.slug);
+  if (!slug) throw new Error("slug가 필요해요.");
+  if (list.some((r) => r.slug === slug)) {
+    throw new Error("이미 같은 slug의 직군이 있어요.");
+  }
+  const next: Role[] = [
+    ...list,
+    {
+      ...role,
+      slug,
+      stack: role.stack ?? [],
+      talents: role.talents ?? [],
+      open: role.open ?? true,
+    },
+  ];
+  await writeJson("roles", next);
+  return next;
+}
+
+export async function updateRole(
+  slug: string,
+  patch: Partial<Omit<Role, "slug">>,
+): Promise<Role[]> {
+  const list = await getRoles();
+  const normalized = normalizeSlug(slug);
+  const idx = list.findIndex((r) => r.slug === normalized);
+  if (idx === -1) throw new Error("해당 직군을 찾을 수 없어요.");
+  const next = [...list];
+  next[idx] = { ...next[idx], ...patch, slug: next[idx].slug };
+  await writeJson("roles", next);
+  return next;
+}
+
+export async function deleteRole(slug: string): Promise<Role[]> {
+  const list = await getRoles();
+  const normalized = normalizeSlug(slug);
+  const next = list.filter((r) => r.slug !== normalized);
+  if (next.length === list.length) throw new Error("해당 직군을 찾을 수 없어요.");
+  await writeJson("roles", next);
+  return next;
+}
+
+/**
+ * Legacy adapter: returns a map of `{ [label]: effectiveOpen }` for back-compat
+ * with existing code paths that still expect the old shape.
+ */
+export async function getRoleStatus(): Promise<RoleStatus> {
+  const roles = await getRoles();
+  const status: RoleStatus = {};
+  for (const r of roles) {
+    status[r.label] = isRoleEffectivelyOpen(r);
+  }
+  return status;
+}
+
+/** Legacy adapter: flip a role's manual open flag by label */
 export async function setRoleStatus(
-  key: RoleKey,
+  labelOrSlug: string,
   value: boolean,
 ): Promise<RoleStatus> {
-  const current = await getRoleStatus();
-  const next = { ...current, [key]: value };
-  await writeJson("role-status", next);
-  return next;
+  const list = await getRoles();
+  const target = list.find(
+    (r) => r.label === labelOrSlug || r.slug === normalizeSlug(labelOrSlug),
+  );
+  if (target) {
+    await updateRole(target.slug, { open: value });
+  }
+  return getRoleStatus();
 }
 
 // ================= Members meta =================
@@ -141,7 +385,10 @@ export async function setRoleStatus(
 export interface MemberMeta {
   name: string;
   role: string;
-  leader?: number;
+  /** 기수 (예: 7) — 사용자가 입력 */
+  generation?: number;
+  /** 리더 여부 */
+  leader?: boolean;
 }
 
 export interface ExtraMember {
@@ -149,7 +396,8 @@ export interface ExtraMember {
   name: string;
   role: string;
   avatar: string;
-  leader?: number;
+  generation?: number;
+  leader?: boolean;
 }
 
 export interface MembersMetaFile {
@@ -165,7 +413,42 @@ const DEFAULT_MEMBERS_META: MembersMetaFile = {
 };
 
 export async function getMembersMeta(): Promise<MembersMetaFile> {
-  return readJson<MembersMetaFile>("members-meta", DEFAULT_MEMBERS_META);
+  const raw = await readJson<MembersMetaFile>(
+    "members-meta",
+    DEFAULT_MEMBERS_META,
+  );
+  // Migrate legacy `leader: number` → `{ generation: N, leader: true }`
+  type Legacy = MemberMeta & { leader?: number | boolean };
+  const byLogin: Record<string, MemberMeta> = {};
+  for (const [k, v] of Object.entries(raw.byLogin ?? {})) {
+    const legacy = v as Legacy;
+    if (typeof legacy.leader === "number") {
+      byLogin[k] = {
+        name: legacy.name,
+        role: legacy.role,
+        generation: legacy.generation ?? legacy.leader,
+        leader: true,
+      };
+    } else {
+      byLogin[k] = legacy as MemberMeta;
+    }
+  }
+  type LegacyExtra = ExtraMember & { leader?: number | boolean };
+  const extra: ExtraMember[] = (raw.extra ?? []).map((e) => {
+    const le = e as LegacyExtra;
+    if (typeof le.leader === "number") {
+      return {
+        login: le.login,
+        name: le.name,
+        role: le.role,
+        avatar: le.avatar,
+        generation: le.generation ?? le.leader,
+        leader: true,
+      };
+    }
+    return le as ExtraMember;
+  });
+  return { byLogin, extra, hidden: raw.hidden ?? [] };
 }
 
 export async function updateMemberMeta(
@@ -228,6 +511,41 @@ export async function deleteExtraMember(
   return data;
 }
 
+// ================= Member snapshot (persistent) =================
+
+/**
+ * Once a GitHub org member is seen, we keep their login + avatar here
+ * so that even if they later leave the org, they still show up in the
+ * members list. Admins can still hide them manually if needed.
+ */
+export interface MemberSnapshotEntry {
+  login: string;
+  avatar: string;
+  lastSeenAt: string;
+}
+
+export async function getMemberSnapshot(): Promise<MemberSnapshotEntry[]> {
+  return readJson<MemberSnapshotEntry[]>("member-snapshot", []);
+}
+
+export async function upsertMemberSnapshot(
+  seen: { login: string; avatar: string }[],
+): Promise<void> {
+  if (seen.length === 0) return;
+  const list = await getMemberSnapshot();
+  const byLogin = new Map<string, MemberSnapshotEntry>();
+  for (const e of list) byLogin.set(e.login.toLowerCase(), e);
+  const now = new Date().toISOString();
+  for (const s of seen) {
+    byLogin.set(s.login.toLowerCase(), {
+      login: s.login,
+      avatar: s.avatar,
+      lastSeenAt: now,
+    });
+  }
+  await writeJson("member-snapshot", Array.from(byLogin.values()));
+}
+
 // ================= Form config =================
 
 export type FormFieldType =
@@ -249,6 +567,7 @@ export interface FormField {
   minLength?: number;
   maxLength?: number;
   builtin?: boolean; // true면 삭제 불가
+  hidden?: boolean; // true면 지원폼에 표시되지 않음
 }
 
 export interface PrivacyPolicy {
@@ -297,7 +616,41 @@ export async function updateFormField(
   const cfg = await getFormConfig();
   const idx = cfg.fields.findIndex((f) => f.id === id);
   if (idx === -1) throw new Error("Field not found");
-  cfg.fields[idx] = { ...cfg.fields[idx], ...patch, id: cfg.fields[idx].id };
+  const existing = cfg.fields[idx];
+  // Builtin fields can't change type
+  const safePatch: Partial<FormField> = { ...patch };
+  if (existing.builtin) {
+    delete safePatch.type;
+  }
+  cfg.fields[idx] = {
+    ...existing,
+    ...safePatch,
+    id: existing.id,
+    builtin: existing.builtin,
+  };
+  await writeJson("form-config", cfg);
+  return cfg;
+}
+
+export async function duplicateFormField(id: string): Promise<FormConfig> {
+  const cfg = await getFormConfig();
+  const field = cfg.fields.find((f) => f.id === id);
+  if (!field) throw new Error("Field not found");
+  // Generate a unique id
+  let newId = `${field.id}-copy`;
+  let counter = 2;
+  while (cfg.fields.some((f) => f.id === newId)) {
+    newId = `${field.id}-copy-${counter++}`;
+  }
+  const dup: FormField = {
+    ...field,
+    id: newId,
+    label: `${field.label} (복사본)`,
+    builtin: false,
+  };
+  // Insert right after the original
+  const idx = cfg.fields.findIndex((f) => f.id === id);
+  cfg.fields.splice(idx + 1, 0, dup);
   await writeJson("form-config", cfg);
   return cfg;
 }

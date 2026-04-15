@@ -44,7 +44,7 @@ function LoginForm() {
       <div className="w-full max-w-md">
         <Link
           href="/"
-          className="inline-flex items-center gap-2 mb-8 text-gray-500 hover:text-[#F5A623] transition-colors text-sm"
+          className="inline-flex items-center gap-2 mb-8 text-gray-500 hover:text-[#B486F9] transition-colors text-sm"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M19 12H5M12 19l-7-7 7-7" />
@@ -56,7 +56,7 @@ function LoginForm() {
           <div className="flex items-center gap-2.5 mb-6">
             <Image src="/goms-logo.svg" alt="GOMS" width={36} height={36} className="rounded-lg" />
             <div>
-              <p className="text-xs font-bold tracking-[0.18em] text-[#F5A623]">ADMIN</p>
+              <p className="text-xs font-bold tracking-[0.18em] text-[#B486F9]">ADMIN</p>
               <p className="text-lg font-black text-[#1E1E1E] tracking-tight">관리자 로그인</p>
             </div>
           </div>
@@ -72,7 +72,7 @@ function LoginForm() {
                 onChange={(e) => setId(e.target.value)}
                 autoComplete="username"
                 required
-                className="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 focus:border-[#F5A623] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#F5A623]/20 transition-all text-sm"
+                className="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 focus:border-[#B486F9] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#B486F9]/20 transition-all text-sm"
               />
             </div>
             <div>
@@ -85,7 +85,7 @@ function LoginForm() {
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="current-password"
                 required
-                className="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 focus:border-[#F5A623] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#F5A623]/20 transition-all text-sm"
+                className="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 focus:border-[#B486F9] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#B486F9]/20 transition-all text-sm"
               />
             </div>
 
@@ -96,7 +96,7 @@ function LoginForm() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full mt-4 px-6 py-3.5 rounded-xl bg-[#F5A623] text-white font-bold hover:bg-[#E8961A] disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-[#F5A623]/25"
+              className="w-full mt-4 px-6 py-3.5 rounded-xl bg-[#B486F9] text-white font-bold hover:bg-[#9A6FE0] disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-[#B486F9]/25"
             >
               {loading ? "로그인 중..." : "로그인"}
             </button>

@@ -1,56 +1,11 @@
 import Image from "next/image";
 import Link from "next/link";
-import { getRoleStatus } from "@/lib/storage";
+import { getRoles, isRoleEffectivelyOpen } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
-const ROLES = [
-  {
-    label: "iOS",
-    color: "#F5A623",
-    bg: "from-orange-50 to-amber-50",
-    desc: "Swift를 활용하여 iPhone·iPad 네이티브 앱을 만들고, 사용자 경험을 설계해요. SwiftUI·Combine 같은 새로운 기술 도입에도 열려 있어요.",
-    stack: ["Swift", "UIKit", "Combine"],
-  },
-  {
-    label: "Android",
-    color: "#3B82F6",
-    bg: "from-blue-50 to-indigo-50",
-    desc: "Jetpack Compose로 모던 안드로이드 앱을 만들고 있어요. 새로운 기술 스택 도입에도 적극적입니다.",
-    stack: ["Kotlin", "Jetpack Compose", "Coroutines"],
-  },
-  {
-    label: "Backend",
-    color: "#10B981",
-    bg: "from-emerald-50 to-teal-50",
-    desc: "Spring Boot 기반의 REST API와 푸시 알림, 학생회 관리자 시스템을 담당해요.",
-    stack: ["Kotlin", "Spring Boot", "JPA"],
-  },
-  {
-    label: "Flutter",
-    color: "#06B6D4",
-    bg: "from-cyan-50 to-sky-50",
-    desc: "하나의 코드로 iOS·Android를 동시에. 크로스 플랫폼으로 더 빠르게 만들고 싶다면 함께해요.",
-    stack: ["Dart", "Flutter", "Riverpod"],
-  },
-  {
-    label: "DevOps",
-    color: "#8B5CF6",
-    bg: "from-violet-50 to-purple-50",
-    desc: "CI/CD 파이프라인, 배포 자동화, 인프라 운영을 담당해요. 서비스가 안정적으로 돌아가도록 만드는 일이에요.",
-    stack: ["Docker", "GitHub Actions", "AWS"],
-  },
-  {
-    label: "Design",
-    color: "#EC4899",
-    bg: "from-pink-50 to-rose-50",
-    desc: "사용자가 한 번에 이해할 수 있는 UI/UX를 고민해요. Figma로 디자인 시스템을 함께 만들어가요.",
-    stack: ["Figma", "Design System", "Prototype"],
-  },
-];
-
 export default async function ApplyPage() {
-  const status = await getRoleStatus();
+  const ROLES = await getRoles();
   return (
     <main className="min-h-screen bg-[#FFF8EE] animate-page-in">
       {/* Simple header */}
@@ -120,8 +75,8 @@ export default async function ApplyPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {ROLES.map((role) => {
-              const isOpen = (status as Record<string, boolean>)[role.label] ?? true;
-              const slug = role.label.toLowerCase();
+              const isOpen = isRoleEffectivelyOpen(role);
+              const slug = role.slug;
               const Wrapper = isOpen ? Link : "div";
               const wrapperProps = isOpen ? { href: `/apply/${slug}` } : {};
               return (
@@ -170,12 +125,10 @@ export default async function ApplyPage() {
                     </div>
 
                     <h3 className="mt-5 text-3xl font-black text-[#1E1E1E] tracking-tight">
-                      {role.label === "Design"
-                        ? "UI/UX Designer"
-                        : `${role.label} Developer`}
+                      {role.title || role.label}
                     </h3>
                     <p className="mt-3 text-sm text-gray-600 leading-relaxed">
-                      {role.desc}
+                      {role.subtitle || role.intro}
                     </p>
 
                     <div className="mt-5 flex flex-wrap gap-1.5">
@@ -188,6 +141,14 @@ export default async function ApplyPage() {
                         </span>
                       ))}
                     </div>
+
+                    {(role.openAt || role.closeAt) && (
+                      <RoleSchedule
+                        openAt={role.openAt}
+                        closeAt={role.closeAt}
+                        color={role.color}
+                      />
+                    )}
 
                     {isOpen && (
                       <div className="mt-6 flex items-center gap-1.5 text-sm font-bold" style={{ color: role.color }}>
@@ -278,5 +239,111 @@ export default async function ApplyPage() {
         </div>
       </footer>
     </main>
+  );
+}
+
+function formatFullDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const now = new Date();
+  const sameYear = d.getFullYear() === now.getFullYear();
+  const month = d.getMonth() + 1;
+  const day = d.getDate();
+  const weekday = ["일", "월", "화", "수", "목", "금", "토"][d.getDay()];
+  const yearPart = sameYear ? "" : `${d.getFullYear()}. `;
+  const hour = d.getHours();
+  const min = d.getMinutes();
+  const ampm = hour < 12 ? "오전" : "오후";
+  const h12 = hour % 12 || 12;
+  const minStr = min.toString().padStart(2, "0");
+  return `${yearPart}${month}월 ${day}일 (${weekday}) ${ampm} ${h12}:${minStr}`;
+}
+
+function relativeFromNow(iso: string): string {
+  const target = new Date(iso).getTime();
+  const now = Date.now();
+  const diffMs = target - now;
+  const absMs = Math.abs(diffMs);
+  const future = diffMs > 0;
+  const min = Math.round(absMs / 60000);
+  const hr = Math.round(absMs / 3600000);
+  const day = Math.round(absMs / 86400000);
+  if (min < 1) return future ? "곧" : "방금 전";
+  if (min < 60) return future ? `${min}분 후` : `${min}분 전`;
+  if (hr < 24) return future ? `${hr}시간 후` : `${hr}시간 전`;
+  return future ? `${day}일 후` : `${day}일 전`;
+}
+
+function RoleSchedule({
+  openAt,
+  closeAt,
+  color,
+}: {
+  openAt?: string | null;
+  closeAt?: string | null;
+  color: string;
+}) {
+  const now = Date.now();
+  const opens = openAt ? new Date(openAt).getTime() : null;
+  const closes = closeAt ? new Date(closeAt).getTime() : null;
+
+  let label: string;
+  let value: string;
+  let relative: string | null = null;
+
+  if (opens && now < opens && openAt) {
+    label = "OPENS";
+    value = formatFullDate(openAt);
+    relative = relativeFromNow(openAt);
+  } else if (closes && now < closes && closeAt) {
+    label = "CLOSES";
+    value = formatFullDate(closeAt);
+    relative = relativeFromNow(closeAt);
+  } else if (closes && now >= closes && closeAt) {
+    label = "CLOSED";
+    value = formatFullDate(closeAt);
+  } else if (openAt) {
+    label = "OPENED";
+    value = formatFullDate(openAt);
+  } else {
+    return null;
+  }
+
+  return (
+    <div
+      className="mt-5 inline-flex items-center gap-3 pl-3 pr-4 py-2 rounded-xl bg-white/90 backdrop-blur-sm border border-white shadow-sm"
+    >
+      <div
+        className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+        style={{ background: `${color}15` }}
+      >
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke={color}
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <circle cx="12" cy="12" r="10" />
+          <polyline points="12 6 12 12 16 14" />
+        </svg>
+      </div>
+      <div className="leading-tight">
+        <p className="text-[9px] font-black tracking-[0.18em] text-gray-400">
+          {label}
+        </p>
+        <p className="text-[12px] font-bold text-[#1E1E1E]">
+          {value}
+          {relative && (
+            <span className="ml-1.5 font-semibold" style={{ color }}>
+              · {relative}
+            </span>
+          )}
+        </p>
+      </div>
+    </div>
   );
 }

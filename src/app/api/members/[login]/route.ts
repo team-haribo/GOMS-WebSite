@@ -19,11 +19,18 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
 
-  const patch: { name?: string; role?: string; leader?: number } = {};
+  const patch: {
+    name?: string;
+    role?: string;
+    generation?: number;
+    leader?: boolean;
+  } = {};
   if (typeof body.name === "string") patch.name = body.name.trim();
   if (typeof body.role === "string") patch.role = body.role.trim();
-  if (body.leader === null) patch.leader = undefined;
-  else if (typeof body.leader === "number") patch.leader = body.leader;
+  if (body.generation === null) patch.generation = undefined;
+  else if (typeof body.generation === "number")
+    patch.generation = body.generation;
+  if (typeof body.leader === "boolean") patch.leader = body.leader;
 
   const next = await updateMemberMeta(login, patch);
   return NextResponse.json({ meta: next });

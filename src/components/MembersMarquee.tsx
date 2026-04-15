@@ -88,7 +88,7 @@ function MemberCard({ member }: { member: Member }) {
           </p>
           {member.leader && (
             <span className="px-1.5 py-0.5 rounded-md bg-gradient-to-r from-[#F5A623] to-[#FF8C00] text-white text-[10px] font-bold whitespace-nowrap shadow-sm shadow-[#F5A623]/30">
-              {member.leader}기 LEADER
+              {member.generation != null ? `${member.generation}기 LEADER` : "LEADER"}
             </span>
           )}
         </div>

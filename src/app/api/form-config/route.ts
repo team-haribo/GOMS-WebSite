@@ -84,6 +84,9 @@ export async function POST(req: Request) {
     placeholder:
       typeof body.placeholder === "string" ? body.placeholder : undefined,
     helpText: typeof body.helpText === "string" ? body.helpText : undefined,
+    pattern: typeof body.pattern === "string" ? body.pattern : undefined,
+    patternError:
+      typeof body.patternError === "string" ? body.patternError : undefined,
     minLength:
       typeof body.minLength === "number" && body.minLength > 0
         ? body.minLength

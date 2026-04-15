@@ -3,10 +3,9 @@ import { cookies } from "next/headers";
 import {
   addApplication,
   getApplications,
-  getRoleStatus,
+  getRoles,
   getFormConfig,
-  ROLE_KEYS,
-  type RoleKey,
+  isRoleEffectivelyOpen,
   type FormField,
   type Application,
 } from "@/lib/storage";
@@ -45,9 +44,7 @@ function validateField(field: FormField, raw: unknown): string | null {
   }
 
   if (field.type === "role") {
-    if (!ROLE_KEYS.includes(value as RoleKey)) {
-      return `${field.label}이(가) 잘못됐어요.`;
-    }
+    // Role validity is checked separately against the dynamic role list below
     return null;
   }
 
@@ -97,28 +94,29 @@ export async function POST(req: Request) {
 
   const config = await getFormConfig();
 
-  // 1. Email auth (optional)
-  let verifiedEmail: string | undefined;
-  if (config.requireEmailAuth) {
-    const jar = await cookies();
-    const token = jar.get(APPLICANT_COOKIE_NAME)?.value;
-    const session = await verifyApplicantToken(token);
-    if (!session) {
-      return NextResponse.json(
-        { error: "Google 로그인이 필요해요." },
-        { status: 401 },
-      );
-    }
-    if (!session.email.endsWith(`@${ALLOWED_APPLICANT_DOMAIN}`)) {
-      return NextResponse.json(
-        {
-          error: `광주소프트웨어마이스터고(@${ALLOWED_APPLICANT_DOMAIN}) 계정으로만 지원할 수 있어요.`,
-        },
-        { status: 403 },
-      );
-    }
-    verifiedEmail = session.email;
+  // 1. Google login is always required. The `requireEmailAuth` flag only
+  //    controls whether the email must belong to @gsm.hs.kr.
+  const jar = await cookies();
+  const token = jar.get(APPLICANT_COOKIE_NAME)?.value;
+  const session = await verifyApplicantToken(token);
+  if (!session) {
+    return NextResponse.json(
+      { error: "Google 로그인이 필요해요." },
+      { status: 401 },
+    );
   }
+  if (
+    config.requireEmailAuth &&
+    !session.email.endsWith(`@${ALLOWED_APPLICANT_DOMAIN}`)
+  ) {
+    return NextResponse.json(
+      {
+        error: `광주소프트웨어마이스터고(@${ALLOWED_APPLICANT_DOMAIN}) 계정으로만 지원할 수 있어요.`,
+      },
+      { status: 403 },
+    );
+  }
+  const verifiedEmail = session.email;
 
   // 2. Privacy consent
   if (config.privacyPolicy.enabled && body.privacyAgreed !== true) {
@@ -138,16 +136,26 @@ export async function POST(req: Request) {
   }
 
   for (const field of config.fields) {
+    if (field.hidden) continue;
     const err = validateField(field, fields[field.id]);
     if (err) return NextResponse.json({ error: err }, { status: 400 });
   }
 
-  // 4. Check role status
+  // 4. Check role status against dynamic role list (label or slug match)
   const roleValue =
     typeof fields.role === "string" ? (fields.role as string).trim() : "";
   if (roleValue) {
-    const status = await getRoleStatus();
-    if (!status[roleValue as RoleKey]) {
+    const allRoles = await getRoles();
+    const matched = allRoles.find(
+      (r) => r.label === roleValue || r.slug === roleValue.toLowerCase(),
+    );
+    if (!matched) {
+      return NextResponse.json(
+        { error: "잘못된 직군이에요." },
+        { status: 400 },
+      );
+    }
+    if (!isRoleEffectivelyOpen(matched)) {
       return NextResponse.json(
         { error: "해당 직군은 현재 모집 마감 상태예요." },
         { status: 400 },

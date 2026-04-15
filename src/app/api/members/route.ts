@@ -21,8 +21,10 @@ export async function POST(req: Request) {
   const name = String(body.name ?? "").trim();
   const role = String(body.role ?? "").trim();
   const avatar = String(body.avatar ?? "").trim();
+  const generation =
+    typeof body.generation === "number" ? body.generation : undefined;
   const leader =
-    typeof body.leader === "number" ? body.leader : undefined;
+    typeof body.leader === "boolean" ? body.leader : undefined;
 
   if (!login || !name || !role || !avatar) {
     return NextResponse.json(
@@ -31,6 +33,13 @@ export async function POST(req: Request) {
     );
   }
 
-  const next = await addExtraMember({ login, name, role, avatar, leader });
+  const next = await addExtraMember({
+    login,
+    name,
+    role,
+    avatar,
+    generation,
+    leader,
+  });
   return NextResponse.json({ meta: next });
 }

@@ -4,12 +4,10 @@ import Script from "next/script";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-type RoleKey = "iOS" | "Android" | "Backend" | "Flutter" | "DevOps" | "Design";
-type RoleStatus = Record<RoleKey, boolean>;
+type RoleKey = string;
+type RoleStatus = Record<string, boolean>;
 
-const ROLES: RoleKey[] = ["iOS", "Android", "Backend", "Flutter", "DevOps", "Design"];
-
-const ROLE_COLOR: Record<RoleKey, string> = {
+const ROLE_COLOR: Record<string, string> = {
   iOS: "#F5A623",
   Android: "#3B82F6",
   Backend: "#10B981",
@@ -30,6 +28,7 @@ interface FormField {
   minLength?: number;
   maxLength?: number;
   builtin?: boolean;
+  hidden?: boolean;
 }
 
 interface PrivacyPolicy {
@@ -120,7 +119,7 @@ export default function ApplyForm({
         for (const f of d.config.fields) {
           if (f.id === "role") {
             init[f.id] =
-              lockedRole ?? ROLES.find((r) => status[r]) ?? "iOS";
+              lockedRole ?? Object.keys(status).find((r) => status[r]) ?? "";
           } else {
             init[f.id] = "";
           }
@@ -138,10 +137,12 @@ export default function ApplyForm({
       .catch(() => setSession({ authenticated: false }));
   }, []);
 
-  const requireAuth = config?.requireEmailAuth === true;
+  // Google login is always required. `requireEmailAuth` only controls whether
+  // the account must be @gsm.hs.kr.
+  const restrictDomain = config?.requireEmailAuth === true;
   const isAuthed = session?.authenticated === true;
-  const blurred = requireAuth && !isAuthed;
-  const showOverlay = requireAuth && session !== null && !isAuthed;
+  const blurred = !isAuthed;
+  const showOverlay = session !== null && !isAuthed;
 
   // Google credential handler
   async function handleCredential(response: GoogleCredentialResponse) {
@@ -209,7 +210,7 @@ export default function ApplyForm({
       return null;
     }
     if (field.type === "role") {
-      if (!ROLES.includes(value as RoleKey)) return `${field.label}이(가) 잘못됐어요.`;
+      if (!status[value]) return `${field.label}이(가) 잘못됐어요.`;
       return null;
     }
     if (field.type === "url") {
@@ -311,14 +312,12 @@ export default function ApplyForm({
 
   return (
     <>
-      {requireAuth && (
-        <Script
-          src="https://accounts.google.com/gsi/client"
-          strategy="afterInteractive"
-          onLoad={() => setGsiReady(true)}
-          onReady={() => setGsiReady(true)}
-        />
-      )}
+      <Script
+        src="https://accounts.google.com/gsi/client"
+        strategy="afterInteractive"
+        onLoad={() => setGsiReady(true)}
+        onReady={() => setGsiReady(true)}
+      />
       <div className="relative">
         <form
           onSubmit={onSubmit}
@@ -328,7 +327,7 @@ export default function ApplyForm({
           }`}
         >
           {/* Verified badge */}
-          {requireAuth && isAuthed && session && (
+          {isAuthed && session && (
             <div className="flex items-center justify-between gap-3 p-4 rounded-2xl bg-gradient-to-br from-[#F5A623]/5 to-[#FF8C00]/5 border border-[#F5A623]/15">
               <div className="flex items-center gap-3 min-w-0">
                 {session.picture ? (
@@ -447,13 +446,23 @@ export default function ApplyForm({
                 </svg>
               </div>
               <h3 className="text-xl sm:text-2xl font-black text-[#1E1E1E] tracking-tight">
-                학생 인증이 필요해요.
+                {restrictDomain ? "학생 인증이 필요해요." : "Google 로그인이 필요해요."}
               </h3>
               <p className="mt-3 text-gray-500 text-sm leading-relaxed">
-                광주소프트웨어마이스터고등학교 학생만 지원할 수 있어요.
-                <br />
-                <span className="font-semibold text-[#1E1E1E]">@gsm.hs.kr</span>{" "}
-                Google 계정으로 로그인해주세요.
+                {restrictDomain ? (
+                  <>
+                    광주소프트웨어마이스터고등학교 학생만 지원할 수 있어요.
+                    <br />
+                    <span className="font-semibold text-[#1E1E1E]">@gsm.hs.kr</span>{" "}
+                    Google 계정으로 로그인해주세요.
+                  </>
+                ) : (
+                  <>
+                    지원서를 작성하려면 먼저
+                    <br />
+                    Google 계정으로 로그인해주세요.
+                  </>
+                )}
               </p>
 
               {!clientId && (
@@ -539,20 +548,24 @@ function DynamicFields({
   setField: (id: string, value: string) => void;
   status: RoleStatus;
 }) {
+  const visibleFields = useMemo(
+    () => config.fields.filter((f) => !f.hidden),
+    [config.fields],
+  );
   const textFields = useMemo(
     () =>
-      config.fields.filter(
+      visibleFields.filter(
         (f) => f.type === "text" || f.type === "username" || f.type === "url",
       ),
-    [config.fields],
+    [visibleFields],
   );
   const textAreaFields = useMemo(
-    () => config.fields.filter((f) => f.type === "textarea"),
-    [config.fields],
+    () => visibleFields.filter((f) => f.type === "textarea"),
+    [visibleFields],
   );
   const roleField = useMemo(
-    () => config.fields.find((f) => f.type === "role"),
-    [config.fields],
+    () => visibleFields.find((f) => f.type === "role"),
+    [visibleFields],
   );
 
   return (
@@ -588,7 +601,7 @@ function DynamicFields({
             {roleField.required && <span className="text-red-500">*</span>}
           </label>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {ROLES.map((role) => {
+            {Object.keys(status).map((role) => {
               const open = status[role];
               const selected = values[roleField.id] === role;
               return (
@@ -602,9 +615,9 @@ function DynamicFields({
                       ? "border-[#F5A623] bg-[#F5A623]/5"
                       : "border-gray-200 hover:border-gray-300"
                   } ${!open ? "opacity-40 cursor-not-allowed line-through" : ""}`}
-                  style={selected && open ? { color: ROLE_COLOR[role] } : {}}
+                  style={selected && open ? { color: ROLE_COLOR[role] || "#F5A623" } : {}}
                 >
-                  {role === "Design" ? "UI/UX Design" : role}
+                  {role}
                   {!open && (
                     <span className="absolute -top-1.5 -right-1.5 text-[9px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-full font-bold">
                       마감
