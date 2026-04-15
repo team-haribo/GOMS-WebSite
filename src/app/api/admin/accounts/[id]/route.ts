@@ -4,6 +4,7 @@ import {
   deleteAdminAccount,
   findAdminAccount,
   updateAdminAccount,
+  type AdminAccount,
 } from "@/lib/storage";
 
 /**
@@ -97,7 +98,7 @@ export async function PATCH(
   }
 
   const now = new Date().toISOString();
-  const patch =
+  const patch: Partial<AdminAccount> =
     status === "approved"
       ? { status, approvedAt: now, approvedBy: adminId }
       : { status, rejectedAt: now, rejectedBy: adminId };
