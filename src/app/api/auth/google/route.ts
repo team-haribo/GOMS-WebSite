@@ -51,7 +51,7 @@ export async function POST(req: Request) {
     });
   };
 
-  let body: { credential?: string };
+  let body: { credential?: string; purpose?: string };
   try {
     body = await req.json();
   } catch {
@@ -64,6 +64,12 @@ export async function POST(req: Request) {
     await logFail("지원자", "credential 누락");
     return NextResponse.json({ error: "Missing credential" }, { status: 400 });
   }
+
+  // The status page lets any Google account sign in (so a former
+  // applicant can still see their archived submission even if the form
+  // currently enforces the school domain). The domain check below is
+  // skipped when purpose === "status".
+  const isStatusFlow = body.purpose === "status";
 
   // Verify the ID token via Google's tokeninfo endpoint
   let info: GoogleTokenInfo;
@@ -126,10 +132,12 @@ export async function POST(req: Request) {
     );
   }
 
-  // Validate domain (only when the form requires @gsm.hs.kr auth)
+  // Validate domain (only when the form requires @gsm.hs.kr auth and the
+  // request isn't from the status-check flow, which always allows any
+  // Google account so applicants can still see their own records).
   const email = (info.email || "").toLowerCase();
   const config = await getFormConfig();
-  if (config.requireEmailAuth) {
+  if (config.requireEmailAuth && !isStatusFlow) {
     const isGsmHsKr =
       info.hd === ALLOWED_APPLICANT_DOMAIN ||
       email.endsWith(`@${ALLOWED_APPLICANT_DOMAIN}`);

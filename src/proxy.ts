@@ -30,6 +30,14 @@ export async function proxy(req: NextRequest) {
     }
   }
 
+  // /api/applications/me is the applicant-facing status endpoint —
+  // authentication is via the applicant Google cookie checked inside
+  // the route, not the admin session. Skip the proxy gate here so an
+  // applicant without an admin session can still reach it.
+  if (pathname === "/api/applications/me") {
+    return NextResponse.next();
+  }
+
   // Protect mutation APIs + admin-only read APIs.
   // /api/application-batches stores full PII snapshots of applicants
   // (name, email, studentId, memos) and must NEVER be public — gate every

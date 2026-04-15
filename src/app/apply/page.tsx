@@ -26,15 +26,27 @@ export default async function ApplyPage() {
               GOMS
             </span>
           </Link>
-          <Link
-            href="/"
-            className="flex items-center gap-1.5 text-sm font-semibold text-[#6B7280] hover:text-[#F5A623] transition-colors"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M19 12H5M12 19l-7-7 7-7" />
-            </svg>
-            홈으로
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/apply/status"
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#F5A623]/10 text-[#F5A623] text-xs font-bold hover:bg-[#F5A623]/15 transition-colors"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 11.08V12a10 10 0 11-5.93-9.14" />
+                <polyline points="22 4 12 14.01 9 11.01" />
+              </svg>
+              내 지원 현황
+            </Link>
+            <Link
+              href="/"
+              className="flex items-center gap-1.5 text-sm font-semibold text-[#6B7280] hover:text-[#F5A623] transition-colors"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 12H5M12 19l-7-7 7-7" />
+              </svg>
+              홈으로
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -58,6 +70,23 @@ export default async function ApplyPage() {
             <br className="hidden sm:block" />
             함께 써내려갈 사람을 기다리고 있어요.
           </p>
+
+          {/* Status check CTA — small pill below the subtitle */}
+          <div className="mt-8 flex justify-center">
+            <Link
+              href="/apply/status"
+              className="group inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-white border border-[#F5A623]/30 text-[#F5A623] text-sm font-bold hover:bg-[#F5A623]/5 hover:border-[#F5A623]/50 transition-all shadow-sm"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 11.08V12a10 10 0 11-5.93-9.14" />
+                <polyline points="22 4 12 14.01 9 11.01" />
+              </svg>
+              이미 지원하셨다면? 지원 현황 확인
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" className="group-hover:translate-x-0.5 transition-transform">
+                <path d="M5 12h14M12 5l7 7-7 7" />
+              </svg>
+            </Link>
+          </div>
         </div>
       </section>
 

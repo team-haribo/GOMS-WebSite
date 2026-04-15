@@ -54,9 +54,22 @@ function validateField(field: FormField, raw: unknown): string | null {
     return null;
   }
 
+  if (
+    field.type === "select" ||
+    (field.options && field.options.length > 0)
+  ) {
+    if (!field.options || !field.options.includes(value)) {
+      return `${field.label}을(를) 선택해주세요.`;
+    }
+    return null;
+  }
+
   if (field.type === "url") {
+    if (!/^https?:\/\//i.test(value)) {
+      return `${field.label}은(는) http:// 또는 https:// 로 시작하는 링크여야 해요.`;
+    }
     try {
-      new URL(value.startsWith("http") ? value : `https://${value}`);
+      new URL(value);
     } catch {
       return `${field.label}은(는) 올바른 URL이어야 해요.`;
     }
@@ -67,7 +80,7 @@ function validateField(field: FormField, raw: unknown): string | null {
     if (URL_REGEX.test(value) || value.includes("/")) {
       return `${field.label}에는 URL이 아닌 아이디만 입력해주세요.`;
     }
-    return null;
+    // Fall through so admin-defined regex / length checks still run
   }
 
   if (field.pattern) {
@@ -215,6 +228,42 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { error: "해당 직군은 현재 모집 마감 상태예요." },
         { status: 400 },
+      );
+    }
+
+    // 4a. Block re-application when an active record already exists for
+    //     this email + role. Active = pipeline still in motion.
+    //     Allowed re-apply states: rejected (탈락) and hired (최종합격).
+    const ACTIVE_STATUSES = new Set(["new", "reviewing", "passed"]);
+    const STATUS_LABEL_FOR_BLOCK: Record<string, string> = {
+      new: "신규(검토 대기)",
+      reviewing: "검토 중",
+      passed: "서류 통과",
+    };
+    const existing = await getApplications();
+    const conflict = existing.find(
+      (a) =>
+        a.email?.toLowerCase() === verifiedEmail.toLowerCase() &&
+        a.role === matched.label &&
+        ACTIVE_STATUSES.has(a.status ?? "new"),
+    );
+    if (conflict) {
+      const conflictStatus = conflict.status ?? "new";
+      await logFail(
+        applicantLabel,
+        `${matched.label} 직군에 이미 ${STATUS_LABEL_FOR_BLOCK[conflictStatus] ?? conflictStatus} 지원서가 있음`,
+        {
+          role: matched.label,
+          email: verifiedEmail,
+          existingApplicationId: conflict.id,
+          existingStatus: conflictStatus,
+        },
+      );
+      return NextResponse.json(
+        {
+          error: `${matched.label} 직군에 이미 ${STATUS_LABEL_FOR_BLOCK[conflictStatus] ?? conflictStatus} 상태인 지원서가 있어요. 결과 안내까지 기다려주세요.`,
+        },
+        { status: 409 },
       );
     }
   }

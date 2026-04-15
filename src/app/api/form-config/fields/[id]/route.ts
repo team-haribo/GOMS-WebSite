@@ -30,6 +30,11 @@ export async function PATCH(
     patch.patternError = body.patternError;
   if (typeof body.minLength === "number") patch.minLength = body.minLength;
   if (typeof body.maxLength === "number") patch.maxLength = body.maxLength;
+  if (Array.isArray(body.options)) {
+    patch.options = body.options.filter(
+      (o): o is string => typeof o === "string",
+    );
+  }
   // Type is only mutable for non-builtin fields (checked in storage)
   if (typeof body.type === "string") {
     patch.type = body.type as FormField["type"];

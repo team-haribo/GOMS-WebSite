@@ -14,6 +14,7 @@ const VALID_TYPES: FormFieldType[] = [
   "url",
   "role",
   "username",
+  "select",
 ];
 
 // GET: return full form config (public)
@@ -108,6 +109,9 @@ export async function POST(req: Request) {
       typeof body.maxLength === "number" && body.maxLength > 0
         ? body.maxLength
         : undefined,
+    options: Array.isArray(body.options)
+      ? body.options.filter((o): o is string => typeof o === "string")
+      : undefined,
     builtin: false,
   };
 

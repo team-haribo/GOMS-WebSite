@@ -16,6 +16,13 @@ const useIsomorphicLayoutEffect =
   typeof window !== "undefined" ? useLayoutEffect : useEffect;
 import { useRouter } from "next/navigation";
 
+type ApplicationStatus =
+  | "new"
+  | "reviewing"
+  | "passed"
+  | "rejected"
+  | "hired";
+
 interface Application {
   id: string;
   name?: string;
@@ -32,7 +39,32 @@ interface Application {
   privacyAgreed?: boolean;
   createdAt: string;
   adminNote?: string;
+  status?: ApplicationStatus;
 }
+
+const STATUS_ORDER: ApplicationStatus[] = [
+  "new",
+  "reviewing",
+  "passed",
+  "rejected",
+  "hired",
+];
+
+const STATUS_LABELS: Record<ApplicationStatus, string> = {
+  new: "신규",
+  reviewing: "검토 중",
+  passed: "서류 통과",
+  rejected: "불합격",
+  hired: "합격",
+};
+
+const STATUS_COLORS: Record<ApplicationStatus, string> = {
+  new: "#3B82F6", // blue
+  reviewing: "#F5A623", // amber
+  passed: "#8B5CF6", // purple
+  rejected: "#EF4444", // red
+  hired: "#10B981", // emerald
+};
 
 interface ApplicationBatch {
   id: string;
@@ -276,6 +308,28 @@ export default function AdminPage() {
     }
     // Update local state in place to avoid jittery full reload while the
     // admin is still typing / reviewing other cards.
+    const data = await res.json().catch(() => null);
+    if (data?.application) {
+      setApplications((prev) =>
+        prev.map((a) => (a.id === id ? data.application : a)),
+      );
+    }
+    return true;
+  }
+
+  async function setAppStatus(
+    id: string,
+    status: ApplicationStatus,
+  ): Promise<boolean> {
+    const res = await fetch(`/api/applications/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    if (!res.ok) {
+      alert("상태 변경 실패");
+      return false;
+    }
     const data = await res.json().catch(() => null);
     if (data?.application) {
       setApplications((prev) =>
@@ -863,6 +917,7 @@ export default function AdminPage() {
               onDelete={deleteApp}
               onCloseRound={closeRound}
               onSaveNote={saveAppNote}
+              onSetStatus={setAppStatus}
             />
           )}
           {!loading && tab === "archives" && (
@@ -1457,23 +1512,44 @@ function LogsTab({
     return flagged;
   }, [activity]);
 
+  // Action key classification:
+  //   USER actions  — the applicant themself triggered them (public
+  //                   funnel: submit success/fail, Google login)
+  //   ADMIN actions — an admin reviewer triggered them on an applicant
+  //                   record (delete, note edit, status change)
+  // Both share the `application.` prefix so we can't classify by prefix
+  // alone — list the user-facing ones explicitly and let everything else
+  // under that namespace fall into admin.
+  const USER_APPLICATION_ACTIONS = new Set([
+    "application.submit",
+    "application.submitFail",
+    "application.authGoogle",
+    "application.authGoogleFail",
+  ]);
+  const isUserAction = (action: string) =>
+    USER_APPLICATION_ACTIONS.has(action);
+
   // Admin channel: drop ghost entries from deleted admin accounts, and
   // exclude the public applicant funnel (that goes in the user channel).
+  // Admin-performed `application.*` actions (delete, note, status) stay
+  // on this channel.
   const adminActivity = useMemo(
     () =>
       activity.filter(
         (a) =>
-          !a.action.startsWith("application.") &&
+          !isUserAction(a.action) &&
           liveAdminIds.has(a.adminId.toLowerCase()),
       ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [activity, liveAdminIds],
   );
 
   // User channel: the public applicant funnel (submit, Google auth).
   // Actors are ad-hoc labels (name / email / "지원자") so we don't filter
-  // by liveAdminIds here — just by action prefix.
+  // by liveAdminIds here — just by action whitelist.
   const userActivity = useMemo(
-    () => activity.filter((a) => a.action.startsWith("application.")),
+    () => activity.filter((a) => isUserAction(a.action)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [activity],
   );
 
@@ -2962,16 +3038,22 @@ function ApplicationsTab({
   onDelete,
   onCloseRound,
   onSaveNote,
+  onSetStatus,
 }: {
   applications: Application[];
   roles: Role[];
   onDelete: (id: string) => void;
   onCloseRound: (title: string, clearCurrent: boolean) => Promise<boolean>;
   onSaveNote: (id: string, note: string) => Promise<boolean>;
+  onSetStatus: (id: string, status: ApplicationStatus) => Promise<boolean>;
 }) {
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [genFilter, setGenFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | ApplicationStatus>(
+    "all",
+  );
+  const [query, setQuery] = useState<string>("");
   const [closeOpen, setCloseOpen] = useState(false);
 
   // Compute stats: only roles currently open (effective open considering schedule)
@@ -3043,11 +3125,48 @@ function ApplicationsTab({
     return a.localeCompare(b, "ko");
   });
 
-  // Apply filter + sort
+  // Per-status count (for the filter chip badges)
+  const statusCounts: Record<ApplicationStatus, number> = {
+    new: 0,
+    reviewing: 0,
+    passed: 0,
+    rejected: 0,
+    hired: 0,
+  };
+  for (const a of applications) {
+    statusCounts[a.status ?? "new"]++;
+  }
+
+  // Apply filter + search + sort. Search is a case-insensitive substring
+  // match across every text field the admin might want to grep through —
+  // name, studentId, email, github, body copy, admin memo, custom fields.
+  const normalizedQuery = query.trim().toLowerCase();
   const filtered = applications.filter((a) => {
     if (roleFilter !== "all" && a.role !== roleFilter) return false;
     if (genFilter !== "all" && (a.generation ?? "").trim() !== genFilter)
       return false;
+    if (statusFilter !== "all" && (a.status ?? "new") !== statusFilter)
+      return false;
+    if (normalizedQuery) {
+      const haystack = [
+        a.name,
+        a.studentId,
+        a.generation,
+        a.role,
+        a.github,
+        a.email,
+        a.introduction,
+        a.motivation,
+        a.wantedFeatures,
+        a.portfolio,
+        a.adminNote,
+        ...(a.custom ? Object.values(a.custom) : []),
+      ]
+        .filter((v): v is string => typeof v === "string")
+        .join(" ")
+        .toLowerCase();
+      if (!haystack.includes(normalizedQuery)) return false;
+    }
     return true;
   });
   const sorted = [...filtered].sort((a, b) => {
@@ -3213,8 +3332,102 @@ function ApplicationsTab({
         <>
           {/* Filter & sort controls */}
           <div className="bg-white rounded-3xl border border-gray-100 p-5 sm:p-6 space-y-4">
+            {/* Search box */}
+            <div className="relative">
+              <svg
+                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <circle cx="11" cy="11" r="8" />
+                <path d="M21 21l-4.35-4.35" />
+              </svg>
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="이름, 학번, GitHub, 자소서 등으로 검색..."
+                className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-gray-50 border border-gray-200 text-sm placeholder:text-gray-400 focus:outline-none focus:border-[#B486F9] focus:bg-white focus:ring-2 focus:ring-[#B486F9]/20 transition-all"
+              />
+              {query && (
+                <button
+                  onClick={() => setQuery("")}
+                  aria-label="검색어 지우기"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded text-gray-400 hover:text-[#1E1E1E] hover:bg-gray-100 transition-colors"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              )}
+            </div>
+
             <div className="flex items-start justify-between gap-3 flex-wrap">
               <div className="flex-1 min-w-0 space-y-3">
+                {/* Status filter chips */}
+                <div>
+                  <p className="text-[9px] font-black tracking-[0.18em] text-gray-400 uppercase mb-1.5">
+                    상태
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      onClick={() => setStatusFilter("all")}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${
+                        statusFilter === "all"
+                          ? "bg-[#1E1E1E] text-white"
+                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      }`}
+                    >
+                      전체
+                      <span
+                        className={`tabular-nums text-[10px] ${
+                          statusFilter === "all"
+                            ? "text-white/70"
+                            : "text-gray-400"
+                        }`}
+                      >
+                        {applications.length}
+                      </span>
+                    </button>
+                    {STATUS_ORDER.map((s) => {
+                      const active = statusFilter === s;
+                      const color = STATUS_COLORS[s];
+                      return (
+                        <button
+                          key={s}
+                          onClick={() => setStatusFilter(s)}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${
+                            active
+                              ? "text-white"
+                              : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                          }`}
+                          style={active ? { background: color } : undefined}
+                        >
+                          <span
+                            className="w-1.5 h-1.5 rounded-full"
+                            style={{ background: active ? "#fff" : color }}
+                          />
+                          {STATUS_LABELS[s]}
+                          <span
+                            className={`tabular-nums text-[10px] ${
+                              active ? "text-white/70" : "text-gray-400"
+                            }`}
+                          >
+                            {statusCounts[s]}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 <div>
                   <p className="text-[9px] font-black tracking-[0.18em] text-gray-400 uppercase mb-1.5">
                     직군
@@ -3334,10 +3547,14 @@ function ApplicationsTab({
               <p className="text-gray-500">조건에 맞는 지원자가 없어요.</p>
             </div>
           ) : (
-            sorted.map((app) => (
+            sorted.map((app) => {
+              const appStatus = app.status ?? "new";
+              const statusColor = STATUS_COLORS[appStatus];
+              return (
         <div
           key={app.id}
-          className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm"
+          className="bg-white rounded-2xl p-6 border-l-4 border-t border-r border-b border-gray-100 shadow-sm"
+          style={{ borderLeftColor: statusColor }}
         >
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0 flex-1">
@@ -3352,6 +3569,20 @@ function ApplicationsTab({
                 <span className="text-xs text-gray-500">{app.generation}</span>
                 <span className="text-xs text-gray-400">·</span>
                 <span className="text-xs text-gray-500">{app.studentId}</span>
+                {/* Status pill */}
+                <span
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold"
+                  style={{
+                    background: `${statusColor}15`,
+                    color: statusColor,
+                  }}
+                >
+                  <span
+                    className="w-1.5 h-1.5 rounded-full"
+                    style={{ background: statusColor }}
+                  />
+                  {STATUS_LABELS[appStatus]}
+                </span>
               </div>
               {app.introduction && (
                 <Section title="자기소개">
@@ -3413,15 +3644,34 @@ function ApplicationsTab({
                 onSave={(note) => onSaveNote(app.id, note)}
               />
             </div>
-            <button
-              onClick={() => onDelete(app.id)}
-              className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold text-red-500 hover:bg-red-50 transition-colors"
-            >
-              삭제
-            </button>
+            <div className="shrink-0 flex flex-col items-end gap-2">
+              {/* Status picker */}
+              <select
+                value={appStatus}
+                onChange={(e) =>
+                  onSetStatus(app.id, e.target.value as ApplicationStatus)
+                }
+                className="px-2.5 py-1.5 rounded-lg bg-gray-50 border border-gray-200 text-xs font-bold text-[#1E1E1E] hover:border-[#B486F9] focus:outline-none focus:border-[#B486F9] focus:ring-2 focus:ring-[#B486F9]/20 transition-all cursor-pointer"
+                style={{ borderLeftWidth: 3, borderLeftColor: statusColor }}
+                aria-label="지원자 상태 변경"
+              >
+                {STATUS_ORDER.map((s) => (
+                  <option key={s} value={s}>
+                    {STATUS_LABELS[s]}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => onDelete(app.id)}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold text-red-500 hover:bg-red-50 transition-colors"
+              >
+                삭제
+              </button>
+            </div>
           </div>
         </div>
-            ))
+              );
+            })
           )}
         </>
       )}

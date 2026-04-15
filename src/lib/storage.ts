@@ -47,6 +47,16 @@ async function writeJson<T>(key: string, value: T): Promise<void> {
 
 // ================= Applications =================
 
+// Review pipeline stages. "new" is the implicit default for freshly
+// submitted applications — older rows without a status are treated the
+// same as "new" at read time.
+export type ApplicationStatus =
+  | "new"
+  | "reviewing"
+  | "passed"
+  | "rejected"
+  | "hired";
+
 export interface Application {
   id: string;
   // Core built-in fields (always present if configured)
@@ -66,6 +76,11 @@ export interface Application {
   createdAt: string;
   // Admin-only — private notes taken during review/interview
   adminNote?: string;
+  // Review pipeline — defaults to "new" on read if missing
+  status?: ApplicationStatus;
+  // Set whenever status changes — used by the applicant status page to
+  // bubble freshly-updated applications to the top of the list.
+  statusUpdatedAt?: string;
 }
 
 export async function getApplications(): Promise<Application[]> {
@@ -92,6 +107,29 @@ export async function deleteApplication(id: string): Promise<boolean> {
   if (next.length === list.length) return false;
   await writeJson("applications", next);
   return true;
+}
+
+/**
+ * Moves a single application through the review pipeline. Records the
+ * timestamp so the status page can sort by most recent activity (either
+ * the original submission OR the latest status change).
+ */
+export async function updateApplicationStatus(
+  id: string,
+  status: ApplicationStatus,
+): Promise<Application | null> {
+  const list = await getApplications();
+  const idx = list.findIndex((a) => a.id === id);
+  if (idx === -1) return null;
+  const next: Application = {
+    ...list[idx],
+    status,
+    statusUpdatedAt: new Date().toISOString(),
+  };
+  const nextList = [...list];
+  nextList[idx] = next;
+  await writeJson("applications", nextList);
+  return next;
 }
 
 /**
@@ -839,7 +877,8 @@ export type FormFieldType =
   | "textarea" // 멀티라인
   | "url" // URL 검증
   | "role" // 직군 선택
-  | "username"; // 텍스트인데 URL 불가 (GitHub ID 등)
+  | "username" // 텍스트인데 URL 불가 (GitHub ID 등)
+  | "select"; // 정해진 옵션 중 하나 선택 (button group)
 
 export interface FormField {
   id: string;
@@ -854,6 +893,8 @@ export interface FormField {
   maxLength?: number;
   builtin?: boolean; // true면 삭제 불가
   hidden?: boolean; // true면 지원폼에 표시되지 않음
+  // select 전용 — 선택 가능한 값 목록 (예: ["7기", "8기", "9기", "10기"])
+  options?: string[];
 }
 
 export interface PrivacyPolicy {

@@ -95,6 +95,22 @@ export default function Footer() {
                   지원하기
                 </Link>
               </li>
+              <li>
+                <Link
+                  href="/apply/status"
+                  className="text-white/60 hover:text-[#F5A623] transition-colors"
+                >
+                  지원 현황 확인
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/admin"
+                  className="text-white/60 hover:text-[#F5A623] transition-colors"
+                >
+                  어드민 페이지
+                </Link>
+              </li>
             </ul>
           </div>
 
