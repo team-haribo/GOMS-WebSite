@@ -16,7 +16,7 @@ import {
 const ID_RE = /^[a-z][a-z0-9_-]{2,30}$/i;
 
 export async function POST(req: Request) {
-  let body: { id?: string; password?: string };
+  let body: { id?: string; name?: string; password?: string };
   try {
     body = await req.json();
   } catch {
@@ -24,11 +24,18 @@ export async function POST(req: Request) {
   }
 
   const id = (body.id ?? "").trim();
+  const name = (body.name ?? "").trim();
   const password = body.password ?? "";
 
   if (!ID_RE.test(id)) {
     return NextResponse.json(
       { error: "아이디는 영문으로 시작하는 3~31자 영숫자/_/-만 가능해요." },
+      { status: 400 },
+    );
+  }
+  if (!name || name.length > 40) {
+    return NextResponse.json(
+      { error: "이름을 1~40자로 입력해주세요." },
       { status: 400 },
     );
   }
@@ -60,6 +67,7 @@ export async function POST(req: Request) {
   const { hash, salt } = await hashPassword(password);
   const account: AdminAccount = {
     id,
+    name,
     passwordHash: hash,
     passwordSalt: salt,
     status: "pending",
@@ -84,8 +92,8 @@ export async function POST(req: Request) {
   await logAdminActivity({
     adminId: id,
     action: "account.register",
-    description: `가입 신청 · ${device} · ${ip}`,
-    meta: { ip, userAgent: ua, device },
+    description: `${name} (${id}) 가입 신청 · ${device} · ${ip}`,
+    meta: { ip, userAgent: ua, device, name },
   });
 
   return NextResponse.json({ ok: true });

@@ -184,6 +184,7 @@ export type AdminAccountStatus = "pending" | "approved" | "rejected";
 
 export interface AdminAccount {
   id: string; // login id (unique)
+  name?: string; // display name (e.g. "서지완") — optional for env-seeded legacy
   passwordHash: string; // base64url
   passwordSalt: string; // base64url
   status: AdminAccountStatus;

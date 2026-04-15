@@ -137,6 +137,7 @@ type Tab =
 
 interface AdminAccountSummary {
   id: string;
+  name?: string;
   status: "pending" | "approved" | "rejected";
   role: "super" | "admin";
   createdAt: string;
@@ -209,6 +210,7 @@ export default function AdminPage() {
   const [roles, setRoles] = useState<Role[]>([]);
   const [formConfig, setFormConfig] = useState<FormConfig | null>(null);
   const [adminId, setAdminId] = useState<string | null>(null);
+  const [adminName, setAdminName] = useState<string | null>(null);
   const [activity, setActivity] = useState<AdminActivity[]>([]);
   const [allActivity, setAllActivity] = useState<AdminActivity[]>([]);
   const [accounts, setAccounts] = useState<AdminAccountSummary[]>([]);
@@ -235,6 +237,7 @@ export default function AdminPage() {
       setFormConfig(f.config ?? null);
       setBatches(b.batches ?? []);
       setAdminId(me?.adminId ?? null);
+      setAdminName(me?.name ?? null);
       setActivity(me?.activity ?? []);
       setAllActivity(logs?.activity ?? []);
       setAccounts(accts?.accounts ?? []);
@@ -818,6 +821,7 @@ export default function AdminPage() {
           {!loading && tab === "me" && (
             <MyPageTab
               adminId={adminId}
+              adminName={adminName}
               activity={activity}
               onRefresh={load}
             />
@@ -825,6 +829,7 @@ export default function AdminPage() {
           {!loading && tab === "logs" && (
             <LogsTab
               currentAdminId={adminId}
+              accounts={accounts}
               activity={allActivity}
               onRefresh={load}
             />
@@ -1028,10 +1033,12 @@ function OverviewTab({
 
 function MyPageTab({
   adminId,
+  adminName,
   activity,
   onRefresh,
 }: {
   adminId: string | null;
+  adminName: string | null;
   activity: AdminActivity[];
   onRefresh: () => void;
 }) {
@@ -1065,7 +1072,12 @@ function MyPageTab({
               Admin Profile
             </p>
             <h2 className="mt-1 text-xl sm:text-2xl font-black text-[#1E1E1E] tracking-tight truncate">
-              {adminId ?? "—"}
+              {adminName ?? adminId ?? "—"}
+              {adminName && adminId && (
+                <span className="ml-2 text-sm font-bold text-gray-400">
+                  @{adminId}
+                </span>
+              )}
             </h2>
             <p className="mt-1 text-xs text-gray-500">
               GOMS 관리자 콘솔 세션
@@ -1089,8 +1101,8 @@ function MyPageTab({
               수정 기록
             </h3>
             <p className="mt-1 text-xs text-gray-400">
-              이 계정({adminId ?? "—"})이 수행한 모든 수정 작업 · 최대 500건까지
-              보관
+              이 계정({adminName ? `${adminName} @${adminId}` : (adminId ?? "—")})이
+              수행한 모든 수정 작업 · 최대 500건까지 보관
             </p>
           </div>
           <button
@@ -1221,6 +1233,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   member: "멤버",
   form: "지원폼",
   session: "세션",
+  account: "관리자 계정",
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -1230,6 +1243,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   member: "#8B5CF6",
   form: "#EC4899",
   session: "#6B7280",
+  account: "#B486F9",
 };
 
 /**
@@ -1240,15 +1254,36 @@ const CATEGORY_COLORS: Record<string, string> = {
  */
 function LogsTab({
   currentAdminId,
+  accounts,
   activity,
   onRefresh,
 }: {
   currentAdminId: string | null;
+  accounts: AdminAccountSummary[];
   activity: AdminActivity[];
   onRefresh: () => void;
 }) {
   const [adminFilter, setAdminFilter] = useState<string>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
+
+  // Build a id→name lookup so we can render "이름 · @id" everywhere.
+  // Falls back to the activity entry's own meta.name (set on register)
+  // for entries where the actor no longer has an account row.
+  const nameFor = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const acc of accounts) {
+      if (acc.name) map.set(acc.id, acc.name);
+    }
+    for (const row of activity) {
+      if (
+        !map.has(row.adminId) &&
+        typeof row.meta?.name === "string"
+      ) {
+        map.set(row.adminId, row.meta.name as string);
+      }
+    }
+    return (id: string) => map.get(id) ?? null;
+  }, [accounts, activity]);
 
   // Compute session summary: unique (adminId, ip, device) tuples seen
   const sessionSummary = useMemo(() => {
@@ -1397,17 +1432,24 @@ function LogsTab({
             있어요
           </p>
           <div className="mt-5 space-y-2">
-            {sessionSummary.map((s) => (
+            {sessionSummary.map((s) => {
+              const name = nameFor(s.adminId);
+              return (
               <div
                 key={`${s.adminId}-${s.ip}-${s.device}`}
                 className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100"
               >
                 <div className="shrink-0 w-8 h-8 rounded-lg bg-[#B486F9]/10 text-[#B486F9] flex items-center justify-center font-black text-sm">
-                  {s.adminId.slice(0, 1).toUpperCase()}
+                  {(name ?? s.adminId).slice(0, 1).toUpperCase()}
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-bold text-[#1E1E1E]">
-                    {s.adminId}
+                    {name ?? s.adminId}
+                    {name && (
+                      <span className="ml-1.5 text-[11px] font-semibold text-gray-400">
+                        @{s.adminId}
+                      </span>
+                    )}
                     {s.adminId === currentAdminId && (
                       <span className="ml-2 text-[10px] font-bold text-emerald-500">
                         · 본인
@@ -1429,7 +1471,8 @@ function LogsTab({
                   </p>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       )}
@@ -1448,15 +1491,18 @@ function LogsTab({
             >
               모든 관리자
             </FilterChip>
-            {adminIds.map((aid) => (
-              <FilterChip
-                key={aid}
-                active={adminFilter === aid}
-                onClick={() => setAdminFilter(aid)}
-              >
-                {aid}
-              </FilterChip>
-            ))}
+            {adminIds.map((aid) => {
+              const nm = nameFor(aid);
+              return (
+                <FilterChip
+                  key={aid}
+                  active={adminFilter === aid}
+                  onClick={() => setAdminFilter(aid)}
+                >
+                  {nm ? `${nm} @${aid}` : aid}
+                </FilterChip>
+              );
+            })}
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 mb-5">
@@ -1492,6 +1538,7 @@ function LogsTab({
               const d = new Date(a.createdAt);
               const cat = a.action.split(".")[0];
               const isNewDevice = newDeviceLoginIds.has(a.id);
+              const actorName = nameFor(a.adminId);
               return (
                 <li key={a.id} className="pl-5 relative">
                   <span
@@ -1509,7 +1556,14 @@ function LogsTab({
                       {a.action}
                     </span>
                     <span className="text-[10px] font-bold text-gray-500 px-1.5 py-0.5 rounded bg-gray-100">
-                      {a.adminId}
+                      {actorName ? (
+                        <>
+                          {actorName}{" "}
+                          <span className="text-gray-400">@{a.adminId}</span>
+                        </>
+                      ) : (
+                        a.adminId
+                      )}
                     </span>
                     <span className="text-[11px] text-gray-400 tabular-nums">
                       {d.toLocaleString("ko-KR", {
@@ -1754,11 +1808,16 @@ function AccountsSection({
                 className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100"
               >
                 <div className="shrink-0 w-9 h-9 rounded-lg bg-[#B486F9]/10 text-[#B486F9] flex items-center justify-center font-black">
-                  {acc.id.slice(0, 1).toUpperCase()}
+                  {(acc.name ?? acc.id).slice(0, 1).toUpperCase()}
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-bold text-[#1E1E1E] truncate">
-                    {acc.id}
+                    {acc.name ?? acc.id}
+                    {acc.name && (
+                      <span className="ml-1.5 text-[11px] font-semibold text-gray-400">
+                        @{acc.id}
+                      </span>
+                    )}
                     {acc.id === currentAdminId && (
                       <span className="ml-2 text-[10px] font-bold text-emerald-500">
                         · 본인

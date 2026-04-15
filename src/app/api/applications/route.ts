@@ -6,6 +6,7 @@ import {
   getRoles,
   getFormConfig,
   isRoleEffectivelyOpen,
+  logAdminActivity,
   type FormField,
   type Application,
 } from "@/lib/storage";
@@ -14,6 +15,11 @@ import {
   APPLICANT_COOKIE_NAME,
   ALLOWED_APPLICANT_DOMAIN,
 } from "@/lib/auth";
+import {
+  getClientIp,
+  getUserAgent,
+  parseDeviceLabel,
+} from "@/lib/request-info";
 
 export async function GET() {
   const list = await getApplications();
@@ -185,5 +191,27 @@ export async function POST(req: Request) {
   }
 
   const saved = await addApplication(app);
+
+  // Record the submission in the global activity log so admins can see
+  // it in the audit channel. Uses the applicant's name (not an admin id)
+  // as the actor and captures IP/device like session events.
+  const ip = getClientIp(req);
+  const ua = getUserAgent(req);
+  const device = parseDeviceLabel(ua);
+  await logAdminActivity({
+    adminId: saved.name ?? "지원자",
+    action: "application.submit",
+    description: `${saved.name ?? "지원자"}${
+      saved.role ? ` (${saved.role})` : ""
+    } 지원 제출 · ${device} · ${ip}`,
+    meta: {
+      applicationId: saved.id,
+      role: saved.role,
+      ip,
+      userAgent: ua,
+      device,
+    },
+  });
+
   return NextResponse.json({ ok: true, application: saved });
 }

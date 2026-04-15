@@ -5,6 +5,7 @@ import { useState } from "react";
 import AdminLogo from "@/components/AdminLogo";
 
 export default function AdminRegisterPage() {
+  const [name, setName] = useState("");
   const [id, setId] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -17,6 +18,10 @@ export default function AdminRegisterPage() {
     e.preventDefault();
     setError(null);
 
+    if (!name.trim()) {
+      setError("이름을 입력해주세요.");
+      return;
+    }
     if (password.length < 8) {
       setError("비밀번호는 8자 이상이어야 해요.");
       return;
@@ -31,7 +36,7 @@ export default function AdminRegisterPage() {
       const res = await fetch("/api/admin/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, password }),
+        body: JSON.stringify({ id, name, password }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -107,6 +112,21 @@ export default function AdminRegisterPage() {
           </p>
 
           <form onSubmit={onSubmit} className="space-y-3">
+            <div>
+              <label className="block text-xs font-bold text-gray-500 mb-1.5">
+                이름
+              </label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                autoComplete="name"
+                required
+                maxLength={40}
+                placeholder="예: 서지완"
+                className="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 focus:border-[#B486F9] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#B486F9]/20 transition-all text-sm"
+              />
+            </div>
             <div>
               <label className="block text-xs font-bold text-gray-500 mb-1.5">
                 아이디

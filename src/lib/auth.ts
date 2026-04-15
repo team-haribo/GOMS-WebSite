@@ -127,12 +127,14 @@ export const ALLOWED_APPLICANT_DOMAIN = "gsm.hs.kr";
 async function ensureEnvAdminSeeded(): Promise<void> {
   const envId = process.env.ADMIN_ID;
   const envPassword = process.env.ADMIN_PASSWORD;
+  const envName = process.env.ADMIN_NAME;
   if (!envId || !envPassword) return;
   const existing = await findAdminAccount(envId);
   if (existing) return;
   const { hash, salt } = await hashPassword(envPassword);
   const account: AdminAccount = {
     id: envId,
+    name: envName || undefined,
     passwordHash: hash,
     passwordSalt: salt,
     status: "approved",
