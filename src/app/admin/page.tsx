@@ -2802,14 +2802,42 @@ function ArchivedApplicationCard({
   const [open, setOpen] = useState(false);
   const createdAt = new Date(app.createdAt);
 
+  // Archived round is closed — anyone not explicitly 최종합격(hired)
+  // didn't make the cut. Collapse all non-hired in-flight states into
+  // a single 불합격 display so admins see the final outcome at a glance.
+  const rawStatus = app.status ?? "new";
+  const finalLabel = rawStatus === "hired" ? "최종 합격" : "불합격";
+  const finalTone =
+    rawStatus === "hired"
+      ? {
+          text: "#059862",
+          bg: "#E5FFF3",
+          dot: "#00C73C",
+        }
+      : {
+          text: "#D14C4C",
+          bg: "#FFEBEB",
+          dot: "#F04452",
+        };
+
   return (
-    <div className="bg-white rounded-2xl border border-gray-100">
+    <div className="bg-white rounded-2xl border border-gray-100 min-w-0 overflow-hidden">
       <div className="p-4 flex items-center gap-3">
         <button
           onClick={() => setOpen(!open)}
           className="flex-1 min-w-0 text-left"
         >
           <div className="flex items-center gap-2 flex-wrap">
+            <span
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold tracking-wider"
+              style={{ background: finalTone.bg, color: finalTone.text }}
+            >
+              <span
+                className="w-1.5 h-1.5 rounded-full"
+                style={{ background: finalTone.dot }}
+              />
+              {finalLabel}
+            </span>
             {app.role && (
               <span className="inline-block px-2 py-0.5 rounded-md bg-gray-100 text-gray-600 text-[10px] font-bold tracking-wider uppercase">
                 {app.role}
@@ -2917,7 +2945,7 @@ function ReadOnlyField({
         {label}
       </p>
       <p
-        className={`mt-1 text-sm text-[#1E1E1E] ${
+        className={`mt-1 text-sm text-[#1E1E1E] break-words [overflow-wrap:anywhere] ${
           multiline ? "whitespace-pre-wrap leading-relaxed" : ""
         }`}
       >
