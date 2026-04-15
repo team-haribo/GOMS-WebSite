@@ -92,6 +92,120 @@ export async function deleteApplication(id: string): Promise<boolean> {
   return true;
 }
 
+// ================= Application Batches (archives) =================
+
+/**
+ * A snapshot of applications taken at a point in time when a recruitment
+ * round is closed. Once archived, the batch is immutable (aside from
+ * deleting the whole thing).
+ */
+export interface ApplicationBatch {
+  id: string;
+  title: string; // e.g., "GOMS 1차 모집"
+  closedAt: string; // ISO timestamp
+  applications: Application[]; // snapshot at close time
+}
+
+export async function getApplicationBatches(): Promise<ApplicationBatch[]> {
+  return readJson<ApplicationBatch[]>("application-batches", []);
+}
+
+/**
+ * Snapshots the current applications list into a new batch with the given
+ * title. If `clearCurrent` is true, also empties the live applications
+ * list so the next round starts fresh.
+ */
+export async function createApplicationBatch(
+  title: string,
+  clearCurrent: boolean,
+): Promise<ApplicationBatch> {
+  const trimmedTitle = title.trim();
+  if (!trimmedTitle) throw new Error("제목이 필요해요.");
+  const current = await getApplications();
+  const batch: ApplicationBatch = {
+    id: crypto.randomUUID(),
+    title: trimmedTitle,
+    closedAt: new Date().toISOString(),
+    applications: current,
+  };
+  const list = await getApplicationBatches();
+  list.unshift(batch);
+  await writeJson("application-batches", list);
+  if (clearCurrent) {
+    await writeJson("applications", []);
+  }
+  return batch;
+}
+
+export async function deleteApplicationBatch(id: string): Promise<boolean> {
+  const list = await getApplicationBatches();
+  const next = list.filter((b) => b.id !== id);
+  if (next.length === list.length) return false;
+  await writeJson("application-batches", next);
+  return true;
+}
+
+/**
+ * Restores applications from a batch back into the live applications list.
+ *
+ * - If `applicationIds` is omitted, restores every application in the batch.
+ * - If provided, restores only the listed applications.
+ *
+ * Semantics: "move" — restored applications are appended to the current list
+ * (deduped by id) and removed from the batch. If the batch becomes empty
+ * after the move, it is deleted.
+ *
+ * Returns the list of applications that were actually restored, or null if
+ * the batch doesn't exist.
+ */
+export async function restoreApplicationBatch(
+  id: string,
+  applicationIds?: string[],
+): Promise<Application[] | null> {
+  const list = await getApplicationBatches();
+  const batchIdx = list.findIndex((b) => b.id === id);
+  if (batchIdx === -1) return null;
+  const batch = list[batchIdx];
+
+  // Partition: apps to restore vs apps that stay in the batch
+  const toRestore: Application[] = [];
+  const remaining: Application[] = [];
+  const idSet = applicationIds ? new Set(applicationIds) : null;
+  for (const app of batch.applications) {
+    if (!idSet || idSet.has(app.id)) {
+      toRestore.push(app);
+    } else {
+      remaining.push(app);
+    }
+  }
+
+  // Nothing matched — short-circuit
+  if (toRestore.length === 0) return [];
+
+  // Merge into live applications, deduped by id (existing wins)
+  const current = await getApplications();
+  const seen = new Set(current.map((a) => a.id));
+  const nextCurrent = [...current];
+  for (const app of toRestore) {
+    if (!seen.has(app.id)) {
+      nextCurrent.unshift(app);
+      seen.add(app.id);
+    }
+  }
+  await writeJson("applications", nextCurrent);
+
+  // Update the batch — either shrink it or drop it
+  const nextBatches = [...list];
+  if (remaining.length === 0) {
+    nextBatches.splice(batchIdx, 1);
+  } else {
+    nextBatches[batchIdx] = { ...batch, applications: remaining };
+  }
+  await writeJson("application-batches", nextBatches);
+
+  return toRestore;
+}
+
 // ================= Roles =================
 
 export type RoleKey = string; // now dynamic — any admin-defined role

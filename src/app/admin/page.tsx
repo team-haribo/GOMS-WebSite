@@ -26,6 +26,13 @@ interface Application {
   createdAt: string;
 }
 
+interface ApplicationBatch {
+  id: string;
+  title: string;
+  closedAt: string;
+  applications: Application[];
+}
+
 interface FormField {
   id: string;
   label: string;
@@ -109,7 +116,13 @@ const ROLE_COLOR: Record<string, string> = {
   Member: "#6B7280",
 };
 
-type Tab = "overview" | "members" | "roles" | "form" | "applications";
+type Tab =
+  | "overview"
+  | "members"
+  | "roles"
+  | "form"
+  | "applications"
+  | "archives";
 
 function AdminLogo({ size = 32 }: { size?: number }) {
   return (
@@ -145,7 +158,14 @@ function AdminLogo({ size = 32 }: { size?: number }) {
   );
 }
 
-const VALID_TABS: Tab[] = ["overview", "members", "roles", "form", "applications"];
+const VALID_TABS: Tab[] = [
+  "overview",
+  "members",
+  "roles",
+  "form",
+  "applications",
+  "archives",
+];
 
 function readInitialTab(): Tab {
   if (typeof window === "undefined") return "overview";
@@ -182,6 +202,7 @@ export default function AdminPage() {
     window.history.replaceState(null, "", url.toString());
   }, []);
   const [applications, setApplications] = useState<Application[]>([]);
+  const [batches, setBatches] = useState<ApplicationBatch[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [meta, setMeta] = useState<MembersMetaFile | null>(null);
   const [roleStatus, setRoleStatus] = useState<RoleStatus | null>(null);
@@ -192,11 +213,12 @@ export default function AdminPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [a, m, r, f] = await Promise.all([
+      const [a, m, r, f, b] = await Promise.all([
         fetch("/api/applications").then((r) => r.json()),
         fetch("/api/members").then((r) => r.json()),
         fetch("/api/roles").then((r) => r.json()),
         fetch("/api/form-config").then((r) => r.json()),
+        fetch("/api/application-batches").then((r) => r.json()),
       ]);
       setApplications(a.applications ?? []);
       setMembers(m.members ?? []);
@@ -204,6 +226,7 @@ export default function AdminPage() {
       setRoleStatus(r.status ?? null);
       setRoles(r.roles ?? []);
       setFormConfig(f.config ?? null);
+      setBatches(b.batches ?? []);
     } catch (err) {
       console.error("[admin] load() failed", err);
     } finally {
@@ -225,6 +248,76 @@ export default function AdminPage() {
     if (!confirm("정말 삭제할까요?")) return;
     await fetch(`/api/applications/${id}`, { method: "DELETE" });
     load();
+  }
+
+  async function closeRound(title: string, clearCurrent: boolean): Promise<boolean> {
+    const res = await fetch("/api/application-batches", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title, clearCurrent }),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || "저장 실패");
+      return false;
+    }
+    await load();
+    return true;
+  }
+
+  async function deleteBatch(id: string) {
+    if (!confirm("이 모집 기록을 정말 삭제할까요? 복구할 수 없어요.")) return;
+    const res = await fetch(`/api/application-batches/${id}`, {
+      method: "DELETE",
+    });
+    if (!res.ok) {
+      alert("삭제 실패");
+      return;
+    }
+    load();
+  }
+
+  async function restoreBatch(id: string) {
+    const batch = batches.find((b) => b.id === id);
+    if (!batch) return;
+    const currentCount = applications.length;
+    const restoreCount = batch.applications.length;
+    const msg =
+      `"${batch.title}" 기록 전체를 복구할까요?\n\n` +
+      `• ${restoreCount}명이 현재 지원자 목록(${currentCount}명)에 추가돼요.\n` +
+      `• 같은 지원자가 이미 있으면 건너뛰어요.\n` +
+      `• 복구된 건은 "이전 모집"에서 사라져요.`;
+    if (!confirm(msg)) return;
+    const res = await fetch(`/api/application-batches/${id}/restore`, {
+      method: "POST",
+    });
+    if (!res.ok) {
+      alert("복구 실패");
+      return;
+    }
+    await load();
+    setTab("applications");
+  }
+
+  async function restoreApplication(batchId: string, appId: string) {
+    const batch = batches.find((b) => b.id === batchId);
+    if (!batch) return;
+    const app = batch.applications.find((a) => a.id === appId);
+    if (!app) return;
+    const msg =
+      `${app.name ?? "이 지원자"}를 복구할까요?\n\n` +
+      `• 현재 지원자 목록에 추가되고, "${batch.title}"에서는 사라져요.`;
+    if (!confirm(msg)) return;
+    const res = await fetch(`/api/application-batches/${batchId}/restore`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ applicationIds: [appId] }),
+    });
+    if (!res.ok) {
+      alert("복구 실패");
+      return;
+    }
+    await load();
   }
 
   async function toggleRole(slug: string, open: boolean) {
@@ -403,6 +496,18 @@ export default function AdminPage() {
               <line x1="16" y1="13" x2="8" y2="13" />
               <line x1="16" y1="17" x2="8" y2="17" />
               <polyline points="10 9 9 9 8 9" />
+            </svg>
+          ),
+        },
+        {
+          key: "archives",
+          label: "이전 모집",
+          count: batches.length || null,
+          icon: (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="21 8 21 21 3 21 3 8" />
+              <rect x="1" y="3" width="22" height="5" />
+              <line x1="10" y1="12" x2="14" y2="12" />
             </svg>
           ),
         },
@@ -586,6 +691,15 @@ export default function AdminPage() {
               applications={applications}
               roles={roles}
               onDelete={deleteApp}
+              onCloseRound={closeRound}
+            />
+          )}
+          {!loading && tab === "archives" && (
+            <ArchivesTab
+              batches={batches}
+              onDelete={deleteBatch}
+              onRestore={restoreBatch}
+              onRestoreOne={restoreApplication}
             />
           )}
           {!loading && tab === "members" && meta && (
@@ -777,18 +891,411 @@ function OverviewTab({
   );
 }
 
+function CloseRoundDialog({
+  applicationCount,
+  onCancel,
+  onConfirm,
+}: {
+  applicationCount: number;
+  onCancel: () => void;
+  onConfirm: (title: string, clearCurrent: boolean) => Promise<void>;
+}) {
+  const [title, setTitle] = useState("");
+  const [clearCurrent, setClearCurrent] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!title.trim()) return;
+    setSubmitting(true);
+    try {
+      await onConfirm(title.trim(), clearCurrent);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in-up"
+      onClick={onCancel}
+    >
+      <form
+        onSubmit={submit}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-md rounded-3xl bg-white shadow-2xl p-6 sm:p-8 space-y-5"
+      >
+        <div>
+          <p className="text-[10px] font-bold tracking-[0.18em] text-[#B486F9] uppercase">
+            Close Round
+          </p>
+          <h2 className="mt-1 text-xl font-black text-[#1E1E1E]">
+            모집 종료·저장
+          </h2>
+          <p className="mt-2 text-sm text-gray-500 leading-relaxed">
+            지금 접수된 <span className="font-bold text-[#1E1E1E]">{applicationCount}</span>
+            명의 지원자를 한 건의 기록으로 묶어 보관해요. 나중에 &quot;이전 모집&quot;
+            탭에서 다시 볼 수 있어요.
+          </p>
+        </div>
+
+        <div>
+          <label className="block text-xs font-bold text-gray-600 mb-2 tracking-wider">
+            기록 제목 *
+          </label>
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="예: GOMS 1차 모집"
+            autoFocus
+            required
+            className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-sm focus:outline-none focus:border-[#B486F9] focus:bg-white focus:ring-2 focus:ring-[#B486F9]/20 transition-all"
+          />
+        </div>
+
+        <label className="flex items-start gap-3 p-3 rounded-xl bg-gray-50 border border-gray-200 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={clearCurrent}
+            onChange={(e) => setClearCurrent(e.target.checked)}
+            className="mt-0.5 w-4 h-4 accent-[#B486F9] cursor-pointer shrink-0"
+          />
+          <div>
+            <p className="text-sm font-bold text-[#1E1E1E]">
+              저장 후 현재 지원자 목록 비우기
+            </p>
+            <p className="mt-1 text-xs text-gray-500 leading-relaxed">
+              체크하면 다음 모집 라운드를 위해 지원자 목록이 깨끗하게
+              비워져요. 스냅샷은 &quot;이전 모집&quot;에 안전하게 저장돼요.
+            </p>
+          </div>
+        </label>
+
+        <div className="flex gap-2 pt-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={submitting}
+            className="flex-1 px-4 py-3 rounded-xl border border-gray-200 text-sm font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+          >
+            취소
+          </button>
+          <button
+            type="submit"
+            disabled={submitting || !title.trim()}
+            className="flex-1 px-4 py-3 rounded-xl bg-[#B486F9] text-white text-sm font-bold hover:bg-[#A070F0] disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm shadow-[#B486F9]/25"
+          >
+            {submitting ? "저장 중..." : "저장하기"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function ArchivesTab({
+  batches,
+  onDelete,
+  onRestore,
+  onRestoreOne,
+}: {
+  batches: ApplicationBatch[];
+  onDelete: (id: string) => void;
+  onRestore: (id: string) => void;
+  onRestoreOne: (batchId: string, appId: string) => void;
+}) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  if (batches.length === 0) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto rounded-3xl bg-white border border-gray-100 p-10">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#B486F9]/10 mb-4">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#B486F9" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="21 8 21 21 3 21 3 8" />
+              <rect x="1" y="3" width="22" height="5" />
+              <line x1="10" y1="12" x2="14" y2="12" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-black text-[#1E1E1E]">
+            아직 보관된 모집이 없어요.
+          </h3>
+          <p className="mt-2 text-sm text-gray-500 leading-relaxed">
+            지원자 탭에서 <span className="font-bold text-[#B486F9]">모집 종료·저장</span>을
+            누르면 그 시점의 지원자들이 이곳에 기록돼요.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {batches.map((batch) => {
+        const expanded = expandedId === batch.id;
+        const closedAt = new Date(batch.closedAt);
+        const counts: Record<string, number> = {};
+        for (const app of batch.applications) {
+          const k = app.role ?? "기타";
+          counts[k] = (counts[k] ?? 0) + 1;
+        }
+        return (
+          <div
+            key={batch.id}
+            className="bg-white rounded-3xl border border-gray-100 overflow-hidden"
+          >
+            <div className="p-5 sm:p-6 flex items-start justify-between gap-4">
+              <button
+                onClick={() => setExpandedId(expanded ? null : batch.id)}
+                className="flex-1 text-left min-w-0"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="inline-block px-2 py-0.5 rounded-md bg-[#B486F9]/10 text-[#B486F9] text-[10px] font-bold tracking-wider">
+                    ARCHIVED
+                  </span>
+                  <span className="text-[11px] text-gray-400 tabular-nums">
+                    {closedAt.toLocaleDateString("ko-KR", {
+                      year: "numeric",
+                      month: "long",
+                      day: "numeric",
+                    })}{" "}
+                    {closedAt.toLocaleTimeString("ko-KR", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
+                </div>
+                <h3 className="mt-2 text-lg sm:text-xl font-black text-[#1E1E1E] truncate">
+                  {batch.title}
+                </h3>
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                  <span>
+                    총{" "}
+                    <span className="font-bold text-[#1E1E1E] tabular-nums">
+                      {batch.applications.length}
+                    </span>
+                    명
+                  </span>
+                  {Object.entries(counts).map(([label, count]) => (
+                    <span key={label} className="inline-flex items-center gap-1">
+                      <span className="text-gray-300">·</span>
+                      {label}{" "}
+                      <span className="font-bold text-[#1E1E1E] tabular-nums">
+                        {count}
+                      </span>
+                    </span>
+                  ))}
+                </div>
+              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => onRestore(batch.id)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold text-[#B486F9] bg-[#B486F9]/10 hover:bg-[#B486F9]/15 transition-colors"
+                  aria-label="복구"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 12a9 9 0 1 0 3-6.7" />
+                    <polyline points="3 4 3 10 9 10" />
+                  </svg>
+                  복구
+                </button>
+                <button
+                  onClick={() => setExpandedId(expanded ? null : batch.id)}
+                  className="p-2 rounded-lg text-gray-400 hover:text-[#B486F9] hover:bg-[#B486F9]/10 transition-colors"
+                  aria-label={expanded ? "접기" : "펼치기"}
+                >
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className={`transition-transform ${expanded ? "rotate-180" : ""}`}
+                  >
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => onDelete(batch.id)}
+                  className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                  aria-label="삭제"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {expanded && (
+              <div className="border-t border-gray-100 bg-[#F9FAFB] p-5 sm:p-6 space-y-3">
+                {batch.applications.length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-4">
+                    이 기록에는 지원자가 없어요.
+                  </p>
+                ) : (
+                  batch.applications.map((app) => (
+                    <ArchivedApplicationCard
+                      key={app.id}
+                      app={app}
+                      onRestore={() => onRestoreOne(batch.id, app.id)}
+                    />
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ArchivedApplicationCard({
+  app,
+  onRestore,
+}: {
+  app: Application;
+  onRestore: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const createdAt = new Date(app.createdAt);
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100">
+      <div className="p-4 flex items-center gap-3">
+        <button
+          onClick={() => setOpen(!open)}
+          className="flex-1 min-w-0 text-left"
+        >
+          <div className="flex items-center gap-2 flex-wrap">
+            {app.role && (
+              <span className="inline-block px-2 py-0.5 rounded-md bg-gray-100 text-gray-600 text-[10px] font-bold tracking-wider uppercase">
+                {app.role}
+              </span>
+            )}
+            <span className="text-sm font-bold text-[#1E1E1E]">
+              {app.name || "이름 없음"}
+            </span>
+            {app.generation && (
+              <span className="text-xs text-gray-400">· {app.generation}</span>
+            )}
+            {app.studentId && (
+              <span className="text-xs text-gray-400">· {app.studentId}</span>
+            )}
+          </div>
+          <p className="mt-1 text-[11px] text-gray-400 tabular-nums">
+            {createdAt.toLocaleString("ko-KR")}
+          </p>
+        </button>
+        <button
+          onClick={onRestore}
+          className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-[#B486F9] bg-[#B486F9]/10 hover:bg-[#B486F9]/15 transition-colors"
+          aria-label={`${app.name ?? "지원자"} 복구`}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 12a9 9 0 1 0 3-6.7" />
+            <polyline points="3 4 3 10 9 10" />
+          </svg>
+          복구
+        </button>
+        <button
+          onClick={() => setOpen(!open)}
+          className="shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-[#B486F9] hover:bg-[#B486F9]/10 transition-colors"
+          aria-label={open ? "접기" : "펼치기"}
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={`transition-transform ${open ? "rotate-180" : ""}`}
+          >
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </button>
+      </div>
+      {open && (
+        <div className="px-4 pb-4 pt-0 space-y-3 text-sm">
+          {app.email && (
+            <ReadOnlyField label="이메일" value={app.email} />
+          )}
+          {app.github && <ReadOnlyField label="GitHub" value={app.github} />}
+          {app.introduction && (
+            <ReadOnlyField label="자기소개" value={app.introduction} multiline />
+          )}
+          {app.motivation && (
+            <ReadOnlyField label="지원 동기" value={app.motivation} multiline />
+          )}
+          {app.wantedFeatures && (
+            <ReadOnlyField
+              label="만들고 싶은 기능"
+              value={app.wantedFeatures}
+              multiline
+            />
+          )}
+          {app.portfolio && (
+            <ReadOnlyField label="포트폴리오" value={app.portfolio} />
+          )}
+          {app.custom &&
+            Object.entries(app.custom).map(([k, v]) => (
+              <ReadOnlyField key={k} label={k} value={v} multiline />
+            ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReadOnlyField({
+  label,
+  value,
+  multiline,
+}: {
+  label: string;
+  value: string;
+  multiline?: boolean;
+}) {
+  return (
+    <div>
+      <p className="text-[10px] font-bold tracking-[0.18em] text-gray-400 uppercase">
+        {label}
+      </p>
+      <p
+        className={`mt-1 text-sm text-[#1E1E1E] ${
+          multiline ? "whitespace-pre-wrap leading-relaxed" : ""
+        }`}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
 function ApplicationsTab({
   applications,
   roles,
   onDelete,
+  onCloseRound,
 }: {
   applications: Application[];
   roles: Role[];
   onDelete: (id: string) => void;
+  onCloseRound: (title: string, clearCurrent: boolean) => Promise<boolean>;
 }) {
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [genFilter, setGenFilter] = useState<string>("all");
+  const [closeOpen, setCloseOpen] = useState(false);
 
   // Compute stats: only roles currently open (effective open considering schedule)
   const openRoles = roles.filter((r) => {
@@ -874,6 +1381,33 @@ function ApplicationsTab({
 
   return (
     <div className="space-y-6">
+      {/* Close-round action bar */}
+      <div className="flex justify-end">
+        <button
+          onClick={() => setCloseOpen(true)}
+          disabled={applications.length === 0}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#B486F9] text-white text-xs font-bold hover:bg-[#A070F0] disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm shadow-[#B486F9]/25"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+            <polyline points="17 10 12 15 7 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          모집 종료·저장
+        </button>
+      </div>
+
+      {closeOpen && (
+        <CloseRoundDialog
+          applicationCount={applications.length}
+          onCancel={() => setCloseOpen(false)}
+          onConfirm={async (title, clearCurrent) => {
+            const ok = await onCloseRound(title, clearCurrent);
+            if (ok) setCloseOpen(false);
+          }}
+        />
+      )}
+
       {/* Stats section */}
       {openRoles.length > 0 && (
         <div className="bg-white rounded-3xl border border-gray-100 p-6 sm:p-8">
