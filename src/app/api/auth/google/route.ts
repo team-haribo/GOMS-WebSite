@@ -5,7 +5,12 @@ import {
   APPLICANT_MAX_AGE,
   ALLOWED_APPLICANT_DOMAIN,
 } from "@/lib/auth";
-import { getFormConfig } from "@/lib/storage";
+import { getFormConfig, logAdminActivity } from "@/lib/storage";
+import {
+  getClientIp,
+  getUserAgent,
+  parseDeviceLabel,
+} from "@/lib/request-info";
 
 interface GoogleTokenInfo {
   iss: string;
@@ -24,15 +29,39 @@ interface GoogleTokenInfo {
 }
 
 export async function POST(req: Request) {
+  const ip = getClientIp(req);
+  const ua = getUserAgent(req);
+  const device = parseDeviceLabel(ua);
+
+  const logFail = async (
+    actor: string,
+    reason: string,
+    extra?: Record<string, unknown>,
+  ) => {
+    const email =
+      typeof extra?.email === "string" ? (extra.email as string) : null;
+    // Compose a description that surfaces the account (email) whenever we
+    // know it — so the admin can tell exactly which Google account failed.
+    const who = email && email !== actor ? `${actor} <${email}>` : actor;
+    await logAdminActivity({
+      adminId: actor,
+      action: "application.authGoogleFail",
+      description: `${who} Google 로그인 실패 — ${reason} · ${device} · ${ip}`,
+      meta: { ip, userAgent: ua, device, reason, ...extra },
+    });
+  };
+
   let body: { credential?: string };
   try {
     body = await req.json();
   } catch {
+    await logFail("지원자", "잘못된 요청 본문");
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
 
   const credential = body.credential;
   if (!credential) {
+    await logFail("지원자", "credential 누락");
     return NextResponse.json({ error: "Missing credential" }, { status: 400 });
   }
 
@@ -44,6 +73,7 @@ export async function POST(req: Request) {
       { cache: "no-store" },
     );
     if (!res.ok) {
+      await logFail("지원자", "Google 토큰 검증 실패");
       return NextResponse.json(
         { error: "Google 토큰 검증에 실패했어요." },
         { status: 401 },
@@ -51,14 +81,18 @@ export async function POST(req: Request) {
     }
     info = (await res.json()) as GoogleTokenInfo;
   } catch {
+    await logFail("지원자", "Google 서버 오류");
     return NextResponse.json(
       { error: "Google 인증 중 오류가 발생했어요." },
       { status: 500 },
     );
   }
 
+  const actorLabel = info.name ?? info.email ?? "지원자";
+
   // Validate issuer
   if (info.iss !== "accounts.google.com" && info.iss !== "https://accounts.google.com") {
+    await logFail(actorLabel, "잘못된 토큰 발급자", { email: info.email });
     return NextResponse.json(
       { error: "잘못된 토큰 발급자예요." },
       { status: 401 },
@@ -74,6 +108,7 @@ export async function POST(req: Request) {
     );
   }
   if (info.aud !== expectedAud) {
+    await logFail(actorLabel, "audience 불일치", { email: info.email });
     return NextResponse.json(
       { error: "토큰 수신자가 일치하지 않아요." },
       { status: 401 },
@@ -84,6 +119,7 @@ export async function POST(req: Request) {
   const verified =
     info.email_verified === true || info.email_verified === "true";
   if (!verified) {
+    await logFail(actorLabel, "Google 미인증 이메일", { email: info.email });
     return NextResponse.json(
       { error: "이메일이 Google에서 인증되지 않았어요." },
       { status: 401 },
@@ -99,6 +135,11 @@ export async function POST(req: Request) {
       email.endsWith(`@${ALLOWED_APPLICANT_DOMAIN}`);
 
     if (!isGsmHsKr) {
+      await logFail(
+        actorLabel,
+        `${ALLOWED_APPLICANT_DOMAIN} 도메인 아님`,
+        { email },
+      );
       return NextResponse.json(
         {
           error: `광주소프트웨어마이스터고등학교 계정(@${ALLOWED_APPLICANT_DOMAIN})으로만 지원할 수 있어요.`,
@@ -127,5 +168,17 @@ export async function POST(req: Request) {
     path: "/",
     maxAge: APPLICANT_MAX_AGE,
   });
+
+  // Success log — always include the email so it's obvious which Google
+  // account signed in, even when the display name matches multiple users.
+  const successWho =
+    info.name && info.name !== email ? `${info.name} <${email}>` : email;
+  await logAdminActivity({
+    adminId: actorLabel,
+    action: "application.authGoogle",
+    description: `${successWho} Google 로그인 성공 · ${device} · ${ip}`,
+    meta: { ip, userAgent: ua, device, email, name: info.name },
+  });
+
   return res;
 }

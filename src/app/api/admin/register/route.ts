@@ -54,7 +54,21 @@ export async function POST(req: Request) {
 
   // Seed env admin if this is the very first call so we can reject
   // duplicate registrations for it.
-  await ensureSeededAndCount();
+  const totalAccounts = await ensureSeededAndCount();
+
+  // Hard cap total account rows — the whole list lives in a single KV
+  // row so an unbounded number of pending registrations could inflate it
+  // into the MB range. 100 is generous for a school project; admins can
+  // reject spam via the accounts tab once they notice.
+  const MAX_ACCOUNTS = 100;
+  if (totalAccounts >= MAX_ACCOUNTS) {
+    return NextResponse.json(
+      {
+        error: "계정 정원이 가득 찼어요. 관리자에게 문의해주세요.",
+      },
+      { status: 429 },
+    );
+  }
 
   const existing = await findAdminAccount(id);
   if (existing) {

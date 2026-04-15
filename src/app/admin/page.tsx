@@ -321,6 +321,22 @@ export default function AdminPage() {
     return { ok: true };
   }
 
+  async function deleteLog(
+    logId: string,
+    approvalPassword: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    const res = await fetch(
+      `/api/admin/logs/${encodeURIComponent(logId)}?approvalPassword=${encodeURIComponent(approvalPassword)}`,
+      { method: "DELETE" },
+    );
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      return { ok: false, error: d.error || "삭제 실패" };
+    }
+    await load();
+    return { ok: true };
+  }
+
   async function removeAccount(
     targetId: string,
     approvalPassword: string,
@@ -691,7 +707,46 @@ export default function AdminPage() {
           ))}
         </nav>
 
-        <div className="p-3 border-t border-gray-100">
+        <div className="p-3 border-t border-gray-100 space-y-2">
+          {/* Current admin badge — name, id, role */}
+          <button
+            onClick={() => setTab("me")}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-[#B486F9]/5 transition-colors group"
+          >
+            <div className="shrink-0 w-8 h-8 rounded-lg bg-gradient-to-br from-[#B486F9] to-[#8B5CF6] text-white flex items-center justify-center font-black text-sm">
+              {(adminName ?? adminId ?? "?").slice(0, 1).toUpperCase()}
+            </div>
+            <div className="min-w-0 flex-1 text-left">
+              <p className="text-[11px] font-black text-[#1E1E1E] truncate leading-tight">
+                {adminName ?? adminId ?? "—"}
+              </p>
+              <div className="mt-0.5 flex items-center gap-1 text-[9px] text-gray-400">
+                {adminId && <span className="truncate">@{adminId}</span>}
+                {(() => {
+                  const me = accounts.find(
+                    (a) =>
+                      adminId &&
+                      a.id.toLowerCase() === adminId.toLowerCase(),
+                  );
+                  if (!me) return null;
+                  return (
+                    <>
+                      {adminId && <span className="text-gray-300">·</span>}
+                      <span
+                        className={`font-bold ${
+                          me.role === "super"
+                            ? "text-[#B486F9]"
+                            : "text-gray-500"
+                        }`}
+                      >
+                        {me.role === "super" ? "SUPER" : "ADMIN"}
+                      </span>
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+          </button>
           <button
             onClick={logout}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold text-gray-600 hover:bg-red-50 hover:text-red-600 transition-colors"
@@ -822,6 +877,12 @@ export default function AdminPage() {
             <MyPageTab
               adminId={adminId}
               adminName={adminName}
+              adminRole={
+                accounts.find(
+                  (a) =>
+                    adminId && a.id.toLowerCase() === adminId.toLowerCase(),
+                )?.role ?? null
+              }
               activity={activity}
               onRefresh={load}
             />
@@ -832,12 +893,16 @@ export default function AdminPage() {
               accounts={accounts}
               activity={allActivity}
               onRefresh={load}
+              onDelete={deleteLog}
             />
           )}
           {!loading && tab === "accounts" && (
             <AccountsTab
               currentAdminId={adminId}
               accounts={accounts}
+              activity={allActivity}
+              applications={applications}
+              batches={batches}
               onSetStatus={setAccountStatus}
               onDelete={removeAccount}
             />
@@ -1034,11 +1099,13 @@ function OverviewTab({
 function MyPageTab({
   adminId,
   adminName,
+  adminRole,
   activity,
   onRefresh,
 }: {
   adminId: string | null;
   adminName: string | null;
+  adminRole: "super" | "admin" | null;
   activity: AdminActivity[];
   onRefresh: () => void;
 }) {
@@ -1079,9 +1146,27 @@ function MyPageTab({
                 </span>
               )}
             </h2>
-            <p className="mt-1 text-xs text-gray-500">
-              GOMS 관리자 콘솔 세션
-            </p>
+            <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+              {adminRole && (
+                <span
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black tracking-[0.14em] uppercase ${
+                    adminRole === "super"
+                      ? "bg-gradient-to-r from-[#B486F9] to-[#8B5CF6] text-white shadow-sm shadow-[#B486F9]/30"
+                      : "bg-gray-100 text-gray-600"
+                  }`}
+                >
+                  {adminRole === "super" && (
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 2l3 7h7l-6 4 3 7-7-5-7 5 3-7-6-4h7z" />
+                    </svg>
+                  )}
+                  {adminRole === "super" ? "SUPER" : "ADMIN"}
+                </span>
+              )}
+              <span className="text-xs text-gray-500">
+                GOMS 관리자 콘솔 세션
+              </span>
+            </div>
           </div>
           <div className="shrink-0 hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-600 text-[11px] font-bold">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -1102,7 +1187,7 @@ function MyPageTab({
             </h3>
             <p className="mt-1 text-xs text-gray-400">
               이 계정({adminName ? `${adminName} @${adminId}` : (adminId ?? "—")})이
-              수행한 모든 수정 작업 · 최대 500건까지 보관
+              수행한 모든 수정 작업 · 최대 2000건까지 보관
             </p>
           </div>
           <button
@@ -1257,14 +1342,32 @@ function LogsTab({
   accounts,
   activity,
   onRefresh,
+  onDelete,
 }: {
   currentAdminId: string | null;
   accounts: AdminAccountSummary[];
   activity: AdminActivity[];
   onRefresh: () => void;
+  onDelete: (
+    logId: string,
+    approvalPassword: string,
+  ) => Promise<{ ok: boolean; error?: string }>;
 }) {
+  // Two log channels — admin actions vs. public applicant funnel.
+  // Applicant actions are anything under the `application.*` action key.
+  const [channel, setChannel] = useState<"admin" | "user">("admin");
   const [adminFilter, setAdminFilter] = useState<string>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [deletingLog, setDeletingLog] = useState<AdminActivity | null>(null);
+
+  // Only super admins can delete log entries.
+  const isSuper = useMemo(() => {
+    if (!currentAdminId) return false;
+    const me = accounts.find(
+      (a) => a.id.toLowerCase() === currentAdminId.toLowerCase(),
+    );
+    return me?.role === "super";
+  }, [accounts, currentAdminId]);
 
   // Build a id→name lookup so we can render "이름 · @id" everywhere.
   // Falls back to the activity entry's own meta.name (set on register)
@@ -1285,13 +1388,21 @@ function LogsTab({
     return (id: string) => map.get(id) ?? null;
   }, [accounts, activity]);
 
-  // Compute session summary: unique (adminId, ip, device) tuples seen
+  // Compute session summary: unique (adminId, ip, device) tuples seen.
+  // Excludes entries whose actor is no longer in the accounts list — that
+  // way the summary only shows living accounts and drops ghosts from
+  // deleted or rejected users.
+  const liveAdminIds = useMemo(
+    () => new Set(accounts.map((a) => a.id.toLowerCase())),
+    [accounts],
+  );
   const sessionSummary = useMemo(() => {
     const seen = new Map<
       string,
       { adminId: string; ip: string; device: string; count: number; last: string }
     >();
     for (const row of activity) {
+      if (!liveAdminIds.has(row.adminId.toLowerCase())) continue;
       const ip = typeof row.meta?.ip === "string" ? row.meta.ip : "unknown";
       const device =
         typeof row.meta?.device === "string" ? row.meta.device : "unknown";
@@ -1314,7 +1425,7 @@ function LogsTab({
     return Array.from(seen.values()).sort((a, b) =>
       a.last < b.last ? 1 : -1,
     );
-  }, [activity]);
+  }, [activity, liveAdminIds]);
 
   // For each admin, collect the set of (ip|device) pairs they've previously
   // used so we can mark "new device" on their current session.login rows.
@@ -1346,56 +1457,119 @@ function LogsTab({
     return flagged;
   }, [activity]);
 
+  // Admin channel: drop ghost entries from deleted admin accounts, and
+  // exclude the public applicant funnel (that goes in the user channel).
+  const adminActivity = useMemo(
+    () =>
+      activity.filter(
+        (a) =>
+          !a.action.startsWith("application.") &&
+          liveAdminIds.has(a.adminId.toLowerCase()),
+      ),
+    [activity, liveAdminIds],
+  );
+
+  // User channel: the public applicant funnel (submit, Google auth).
+  // Actors are ad-hoc labels (name / email / "지원자") so we don't filter
+  // by liveAdminIds here — just by action prefix.
+  const userActivity = useMemo(
+    () => activity.filter((a) => a.action.startsWith("application.")),
+    [activity],
+  );
+
+  // Whichever channel is currently selected drives the stats, chips, and
+  // timeline below.
+  const liveActivity = channel === "admin" ? adminActivity : userActivity;
+
   const adminIds = useMemo(() => {
     const set = new Set<string>();
-    for (const a of activity) set.add(a.adminId);
+    for (const a of liveActivity) set.add(a.adminId);
     return Array.from(set).sort();
-  }, [activity]);
+  }, [liveActivity]);
 
   const categoryCounts = useMemo(() => {
     const map = new Map<string, number>();
-    for (const a of activity) {
+    for (const a of liveActivity) {
       const prefix = a.action.split(".")[0];
       map.set(prefix, (map.get(prefix) ?? 0) + 1);
     }
     return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
-  }, [activity]);
+  }, [liveActivity]);
 
   const visible = useMemo(() => {
-    return activity.filter((a) => {
+    return liveActivity.filter((a) => {
       if (adminFilter !== "all" && a.adminId !== adminFilter) return false;
       if (categoryFilter !== "all" && !a.action.startsWith(categoryFilter + "."))
         return false;
       return true;
     });
-  }, [activity, adminFilter, categoryFilter]);
+  }, [liveActivity, adminFilter, categoryFilter]);
 
-  const loginCount = activity.filter((a) => a.action === "session.login").length;
+  const loginCount = liveActivity.filter(
+    (a) => a.action === "session.login",
+  ).length;
   const uniqueDevices = new Set(
-    activity
+    liveActivity
       .filter((a) => typeof a.meta?.device === "string")
       .map((a) => a.meta!.device as string),
   ).size;
   const uniqueIps = new Set(
-    activity
+    liveActivity
       .filter((a) => typeof a.meta?.ip === "string")
       .map((a) => a.meta!.ip as string),
   ).size;
 
+  const adminTotal = adminActivity.length;
+  const userTotal = userActivity.length;
+
   return (
     <div className="space-y-6">
+      {/* Channel tabs */}
+      <div className="inline-flex gap-1 p-1 rounded-xl bg-gray-100">
+        <button
+          onClick={() => {
+            setChannel("admin");
+            setAdminFilter("all");
+            setCategoryFilter("all");
+          }}
+          className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors ${
+            channel === "admin"
+              ? "bg-white text-[#B486F9] shadow-sm"
+              : "text-gray-500 hover:text-[#1E1E1E]"
+          }`}
+        >
+          관리자 로그 {adminTotal}
+        </button>
+        <button
+          onClick={() => {
+            setChannel("user");
+            setAdminFilter("all");
+            setCategoryFilter("all");
+          }}
+          className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors ${
+            channel === "user"
+              ? "bg-white text-[#B486F9] shadow-sm"
+              : "text-gray-500 hover:text-[#1E1E1E]"
+          }`}
+        >
+          유저 로그 {userTotal}
+        </button>
+      </div>
+
       {/* Stats */}
       <section className="rounded-3xl bg-white border border-gray-100 p-6 sm:p-8">
         <div className="flex items-end justify-between flex-wrap gap-3">
           <div>
             <p className="text-xs font-bold tracking-[0.18em] text-[#B486F9]">
-              AUDIT LOG
+              {channel === "admin" ? "ADMIN AUDIT" : "USER AUDIT"}
             </p>
             <h3 className="mt-2 text-xl font-black text-[#1E1E1E]">
-              시스템 로그
+              {channel === "admin" ? "관리자 로그" : "유저 로그"}
             </h3>
             <p className="mt-1 text-xs text-gray-400">
-              모든 관리자의 활동 · 로그인 기기/IP · 최대 500건까지 보관
+              {channel === "admin"
+                ? "관리자들의 모든 활동 · 로그인 기기/IP · 최대 2000건까지 보관"
+                : "지원자 Google 로그인 · 지원서 제출 시도 (성공/실패) · IP/기기"}
             </p>
           </div>
           <button
@@ -1411,15 +1585,15 @@ function LogsTab({
         </div>
 
         <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <StatCard label="전체 로그" value={activity.length} />
+          <StatCard label="전체 로그" value={liveActivity.length} />
           <StatCard label="로그인 수" value={loginCount} />
           <StatCard label="고유 기기" value={uniqueDevices} />
           <StatCard label="고유 IP" value={uniqueIps} />
         </div>
       </section>
 
-      {/* Seen devices per admin */}
-      {sessionSummary.length > 0 && (
+      {/* Seen devices per admin — only meaningful on the admin channel */}
+      {channel === "admin" && sessionSummary.length > 0 && (
         <section className="rounded-3xl bg-white border border-gray-100 p-6 sm:p-8">
           <p className="text-xs font-bold tracking-[0.18em] text-[#B486F9]">
             SESSIONS
@@ -1479,32 +1653,34 @@ function LogsTab({
 
       {/* Filters + timeline */}
       <section className="rounded-3xl bg-white border border-gray-100 p-6 sm:p-8">
-        <div className="flex flex-wrap items-center gap-2 mb-5">
-          <p className="text-[10px] font-bold tracking-[0.18em] text-gray-400 uppercase">
-            Filter
-          </p>
-          {/* Admin filter */}
-          <div className="flex gap-1.5 flex-wrap">
-            <FilterChip
-              active={adminFilter === "all"}
-              onClick={() => setAdminFilter("all")}
-            >
-              모든 관리자
-            </FilterChip>
-            {adminIds.map((aid) => {
-              const nm = nameFor(aid);
-              return (
-                <FilterChip
-                  key={aid}
-                  active={adminFilter === aid}
-                  onClick={() => setAdminFilter(aid)}
-                >
-                  {nm ? `${nm} @${aid}` : aid}
-                </FilterChip>
-              );
-            })}
+        {channel === "admin" && (
+          <div className="flex flex-wrap items-center gap-2 mb-5">
+            <p className="text-[10px] font-bold tracking-[0.18em] text-gray-400 uppercase">
+              Filter
+            </p>
+            {/* Admin filter — only makes sense on the admin channel */}
+            <div className="flex gap-1.5 flex-wrap">
+              <FilterChip
+                active={adminFilter === "all"}
+                onClick={() => setAdminFilter("all")}
+              >
+                모든 관리자
+              </FilterChip>
+              {adminIds.map((aid) => {
+                const nm = nameFor(aid);
+                return (
+                  <FilterChip
+                    key={aid}
+                    active={adminFilter === aid}
+                    onClick={() => setAdminFilter(aid)}
+                  >
+                    {nm ? `${nm} @${aid}` : aid}
+                  </FilterChip>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
         <div className="flex flex-wrap items-center gap-2 mb-5">
           <p className="text-[10px] font-bold tracking-[0.18em] text-gray-400 uppercase">
             Category
@@ -1514,7 +1690,7 @@ function LogsTab({
               active={categoryFilter === "all"}
               onClick={() => setCategoryFilter("all")}
             >
-              전체 {activity.length}
+              전체 {liveActivity.length}
             </FilterChip>
             {categoryCounts.map(([cat, count]) => (
               <FilterChip
@@ -1578,6 +1754,19 @@ function LogsTab({
                         ⚠ 새로운 기기
                       </span>
                     )}
+                    {isSuper && (
+                      <button
+                        onClick={() => setDeletingLog(a)}
+                        className="ml-auto inline-flex items-center p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                        aria-label="이 로그 삭제"
+                        title="이 로그 삭제"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="3 6 5 6 21 6" />
+                          <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                        </svg>
+                      </button>
+                    )}
                   </div>
                   <p className="mt-1 text-sm text-[#1E1E1E]">{a.description}</p>
                   {a.meta && (typeof a.meta.ip === "string" || typeof a.meta.device === "string") && (
@@ -1607,6 +1796,16 @@ function LogsTab({
           </ol>
         )}
       </section>
+
+      {deletingLog && (
+        <ApprovalPasswordDialog
+          kind="delete"
+          targetId={`log / ${deletingLog.action}`}
+          onCancel={() => setDeletingLog(null)}
+          onConfirm={(password) => onDelete(deletingLog.id, password)}
+          onDone={() => setDeletingLog(null)}
+        />
+      )}
     </div>
   );
 }
@@ -1614,15 +1813,25 @@ function LogsTab({
 /**
  * Account management tab — list all admin accounts by status and let the
  * current admin approve / reject / delete via a password-gated dialog.
+ *
+ * Also surfaces derived "user accounts" (applicants who have authenticated
+ * via Google) so the admin has a single place to see both admin accounts
+ * and end-user accounts that have interacted with the apply flow.
  */
 function AccountsTab({
   currentAdminId,
   accounts,
+  activity,
+  applications,
+  batches,
   onSetStatus,
   onDelete,
 }: {
   currentAdminId: string | null;
   accounts: AdminAccountSummary[];
+  activity: AdminActivity[];
+  applications: Application[];
+  batches: ApplicationBatch[];
   onSetStatus: (
     targetId: string,
     status: "approved" | "rejected",
@@ -1645,14 +1854,96 @@ function AccountsTab({
   const approved = accounts.filter((a) => a.status === "approved");
   const rejected = accounts.filter((a) => a.status === "rejected");
 
+  // Derive user accounts from the activity log. Each unique email that
+  // ever successfully authed with Google becomes a row. We also count
+  // login attempts, submission attempts, and last seen time so the admin
+  // has a quick overview without digging through raw logs.
+  const userAccounts = useMemo(() => {
+    type Row = {
+      email: string;
+      name: string | null;
+      loginCount: number;
+      firstSeen: string;
+      lastSeen: string;
+      submitCount: number;
+      submitFailCount: number;
+    };
+    const byEmail = new Map<string, Row>();
+
+    for (const row of activity) {
+      if (!row.action.startsWith("application.")) continue;
+      const email =
+        typeof row.meta?.email === "string" ? (row.meta.email as string) : null;
+      if (!email) continue;
+      const name =
+        typeof row.meta?.name === "string" ? (row.meta.name as string) : null;
+      const existing = byEmail.get(email);
+      if (existing) {
+        if (name && !existing.name) existing.name = name;
+        if (row.createdAt > existing.lastSeen) existing.lastSeen = row.createdAt;
+        if (row.createdAt < existing.firstSeen)
+          existing.firstSeen = row.createdAt;
+        if (row.action === "application.authGoogle") existing.loginCount++;
+        if (row.action === "application.submit") existing.submitCount++;
+        if (row.action === "application.submitFail")
+          existing.submitFailCount++;
+      } else {
+        byEmail.set(email, {
+          email,
+          name,
+          loginCount: row.action === "application.authGoogle" ? 1 : 0,
+          submitCount: row.action === "application.submit" ? 1 : 0,
+          submitFailCount: row.action === "application.submitFail" ? 1 : 0,
+          firstSeen: row.createdAt,
+          lastSeen: row.createdAt,
+        });
+      }
+    }
+
+    // Fallback: also surface applicants from both the live list AND any
+    // archived batches, so users whose rounds have already been closed
+    // (and submissions moved to archives) still show up here.
+    const fallbackApps: Application[] = [
+      ...applications,
+      ...batches.flatMap((b) => b.applications),
+    ];
+    for (const app of fallbackApps) {
+      if (!app.email) continue;
+      const existing = byEmail.get(app.email);
+      if (existing) {
+        // Already have this user from the log — just make sure the
+        // submission count reflects the archived record too.
+        existing.submitCount = Math.max(existing.submitCount, 1);
+        if (!existing.name && app.name) existing.name = app.name;
+        if (app.createdAt < existing.firstSeen)
+          existing.firstSeen = app.createdAt;
+        if (app.createdAt > existing.lastSeen) existing.lastSeen = app.createdAt;
+      } else {
+        byEmail.set(app.email, {
+          email: app.email,
+          name: app.name ?? null,
+          loginCount: 0,
+          submitCount: 1,
+          submitFailCount: 0,
+          firstSeen: app.createdAt,
+          lastSeen: app.createdAt,
+        });
+      }
+    }
+
+    return Array.from(byEmail.values()).sort((a, b) =>
+      a.lastSeen < b.lastSeen ? 1 : -1,
+    );
+  }, [activity, applications, batches]);
+
   return (
     <div className="space-y-6">
       {/* Stats strip */}
       <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatCard label="대기" value={pending.length} />
-        <StatCard label="승인됨" value={approved.length} />
+        <StatCard label="승인된 관리자" value={approved.length} />
         <StatCard label="거부됨" value={rejected.length} />
-        <StatCard label="전체" value={accounts.length} />
+        <StatCard label="유저 계정" value={userAccounts.length} />
       </section>
 
       {/* Pending */}
@@ -1739,6 +2030,9 @@ function AccountsTab({
           emptyLabel=""
         />
       )}
+
+      {/* User accounts — applicants who authed via Google */}
+      <UserAccountsSection accounts={userAccounts} />
 
       {confirming && (
         <ApprovalPasswordDialog
@@ -1861,6 +2155,122 @@ function AccountsSection({
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   {renderActions(acc)}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+interface UserAccountRow {
+  email: string;
+  name: string | null;
+  loginCount: number;
+  firstSeen: string;
+  lastSeen: string;
+  submitCount: number;
+  submitFailCount: number;
+}
+
+/**
+ * Derived view of applicant "accounts" — one row per Google email seen in
+ * the activity log. Not a real account store (there's no underlying table),
+ * so there's nothing to approve/reject/delete here — it's purely informational.
+ */
+function UserAccountsSection({ accounts }: { accounts: UserAccountRow[] }) {
+  return (
+    <section className="rounded-3xl bg-white border border-gray-100 p-6 sm:p-8">
+      <div className="flex items-baseline justify-between gap-3 flex-wrap">
+        <div>
+          <p className="text-xs font-bold tracking-[0.18em] text-[#B486F9] uppercase">
+            User Accounts
+          </p>
+          <p className="mt-1 text-xs text-gray-400">
+            지원 페이지에서 Google로 로그인한 유저 · 로그인/제출 기록 기준
+          </p>
+        </div>
+        <span className="text-[10px] font-bold text-gray-400 tabular-nums">
+          {accounts.length}명
+        </span>
+      </div>
+
+      {accounts.length === 0 ? (
+        <p className="mt-4 text-sm text-gray-400 text-center py-6">
+          아직 Google 로그인한 유저가 없어요.
+        </p>
+      ) : (
+        <div className="mt-5 space-y-2">
+          {accounts.map((acc) => {
+            const first = new Date(acc.firstSeen);
+            const last = new Date(acc.lastSeen);
+            return (
+              <div
+                key={acc.email}
+                className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100"
+              >
+                <div className="shrink-0 w-9 h-9 rounded-lg bg-blue-500/10 text-blue-500 flex items-center justify-center font-black">
+                  {(acc.name ?? acc.email).slice(0, 1).toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-[#1E1E1E] truncate">
+                    {acc.name ?? acc.email}
+                    {acc.name && (
+                      <span className="ml-1.5 text-[11px] font-mono font-semibold text-gray-400">
+                        {acc.email}
+                      </span>
+                    )}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-gray-500 tabular-nums flex flex-wrap gap-x-2">
+                    <span>
+                      처음{" "}
+                      {first.toLocaleDateString("ko-KR", {
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </span>
+                    <span className="text-gray-300">·</span>
+                    <span>
+                      최근{" "}
+                      {last.toLocaleDateString("ko-KR", {
+                        month: "short",
+                        day: "numeric",
+                      })}{" "}
+                      {last.toLocaleTimeString("ko-KR", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                  </p>
+                </div>
+                <div className="shrink-0 flex items-center gap-3 text-[10px] font-bold">
+                  <span className="inline-flex items-center gap-1 text-blue-500">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3" />
+                    </svg>
+                    로그인 {acc.loginCount}
+                  </span>
+                  {acc.submitCount > 0 && (
+                    <span className="inline-flex items-center gap-1 text-emerald-600">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M22 11.08V12a10 10 0 11-5.93-9.14" />
+                        <polyline points="22 4 12 14.01 9 11.01" />
+                      </svg>
+                      제출 {acc.submitCount}
+                    </span>
+                  )}
+                  {acc.submitFailCount > 0 && (
+                    <span className="inline-flex items-center gap-1 text-amber-600">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="8" x2="12" y2="12" />
+                        <line x1="12" y1="16" x2="12.01" y2="16" />
+                      </svg>
+                      실패 {acc.submitFailCount}
+                    </span>
+                  )}
                 </div>
               </div>
             );

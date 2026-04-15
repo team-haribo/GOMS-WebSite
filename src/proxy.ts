@@ -30,9 +30,13 @@ export async function proxy(req: NextRequest) {
     }
   }
 
-  // Protect mutation APIs
+  // Protect mutation APIs + admin-only read APIs.
+  // /api/application-batches stores full PII snapshots of applicants
+  // (name, email, studentId, memos) and must NEVER be public — gate every
+  // method, including GET.
   const needsAuth =
     pathname.startsWith("/api/admin") ||
+    pathname.startsWith("/api/application-batches") ||
     (pathname.startsWith("/api/members") && req.method !== "GET") ||
     (pathname.startsWith("/api/roles") && req.method !== "GET") ||
     (pathname.startsWith("/api/form-config") && req.method !== "GET") ||
@@ -62,5 +66,6 @@ export const config = {
     "/api/roles/:path*",
     "/api/form-config/:path*",
     "/api/applications/:path*",
+    "/api/application-batches/:path*",
   ],
 };

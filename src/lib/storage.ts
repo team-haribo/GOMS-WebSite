@@ -263,7 +263,11 @@ export interface AdminActivity {
   meta?: Record<string, unknown>;
 }
 
-const MAX_ACTIVITY_ENTRIES = 500;
+// Cap the activity log so the jsonb row stays under a few MB. Each entry
+// is roughly 300-500 bytes (id, adminId, action, description, timestamp,
+// optional IP/UA/device meta), so 2000 entries ≈ 0.6-1 MB — still well
+// within Supabase's jsonb limits and keeps read/write latency minimal.
+const MAX_ACTIVITY_ENTRIES = 2000;
 
 export async function getAdminActivity(): Promise<AdminActivity[]> {
   return readJson<AdminActivity[]>("admin-activity", []);
@@ -294,6 +298,23 @@ export async function logAdminActivity(entry: {
     // Logging should never break the underlying mutation
     console.error("[storage] logAdminActivity failed:", err);
   }
+}
+
+/**
+ * Permanently removes a single log entry by id. Returns the deleted row
+ * for audit purposes, or null when no match is found. Intended only for
+ * super admins — the API layer should gate this behind a role check and
+ * a dedicated approval password.
+ */
+export async function deleteAdminActivity(
+  id: string,
+): Promise<AdminActivity | null> {
+  const list = await getAdminActivity();
+  const idx = list.findIndex((a) => a.id === id);
+  if (idx === -1) return null;
+  const [removed] = list.splice(idx, 1);
+  await writeJson("admin-activity", list);
+  return removed ?? null;
 }
 
 /**

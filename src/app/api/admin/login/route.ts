@@ -13,15 +13,30 @@ import {
 } from "@/lib/request-info";
 
 export async function POST(req: Request) {
+  const ip = getClientIp(req);
+  const ua = getUserAgent(req);
+  const device = parseDeviceLabel(ua);
+
+  const logFail = async (attemptedId: string, reason: string) => {
+    await logAdminActivity({
+      adminId: attemptedId || "unknown",
+      action: "session.loginFail",
+      description: `로그인 실패 (${attemptedId || "unknown"}) — ${reason} · ${device} · ${ip}`,
+      meta: { ip, userAgent: ua, device, reason, attemptedId },
+    });
+  };
+
   let body: { id?: string; password?: string };
   try {
     body = await req.json();
   } catch {
+    await logFail("", "잘못된 요청 본문");
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
 
   const { id, password } = body;
   if (!id || !password) {
+    await logFail(id ?? "", "아이디/비밀번호 누락");
     return NextResponse.json(
       { error: "아이디와 비밀번호를 입력해주세요." },
       { status: 400 },
@@ -30,6 +45,7 @@ export async function POST(req: Request) {
 
   const result = await checkCredentials(id, password);
   if (!result.ok) {
+    await logFail(id, result.reason);
     if (result.reason === "pending") {
       return NextResponse.json(
         { error: "아직 승인 대기 중인 계정이에요. 관리자의 승인을 기다려주세요." },
@@ -58,9 +74,6 @@ export async function POST(req: Request) {
     maxAge: SESSION_MAX_AGE,
   });
   // Log the session event directly (cookie isn't in the incoming request yet)
-  const ip = getClientIp(req);
-  const ua = getUserAgent(req);
-  const device = parseDeviceLabel(ua);
   await logAdminActivity({
     adminId: id,
     action: "session.login",

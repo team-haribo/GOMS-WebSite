@@ -19,8 +19,14 @@ export function getClientIp(req: Request): string {
   );
 }
 
+// Cap UA length so an attacker can't balloon the activity log row by
+// sending a 1 MB user-agent header. 400 chars is well above any real
+// browser UA string (~200 chars typical).
+const MAX_UA_LENGTH = 400;
+
 export function getUserAgent(req: Request): string {
-  return req.headers.get("user-agent") ?? "unknown";
+  const raw = req.headers.get("user-agent") ?? "unknown";
+  return raw.length > MAX_UA_LENGTH ? raw.slice(0, MAX_UA_LENGTH) : raw;
 }
 
 /** Derive a friendly "Browser on OS" label from a user-agent string. */

@@ -91,10 +91,34 @@ function validateField(field: FormField, raw: unknown): string | null {
 }
 
 export async function POST(req: Request) {
+  // Capture request provenance up front so every outcome (success, auth
+  // failure, validation failure) can be logged with the same metadata.
+  const ip = getClientIp(req);
+  const ua = getUserAgent(req);
+  const device = parseDeviceLabel(ua);
+
+  /** Record a failed submission attempt in the audit log. */
+  const logFail = async (
+    actor: string,
+    reason: string,
+    extra?: Record<string, unknown>,
+  ) => {
+    const email =
+      typeof extra?.email === "string" ? (extra.email as string) : null;
+    const who = email && email !== actor ? `${actor} <${email}>` : actor;
+    await logAdminActivity({
+      adminId: actor,
+      action: "application.submitFail",
+      description: `${who} 지원 실패 — ${reason} · ${device} · ${ip}`,
+      meta: { ip, userAgent: ua, device, reason, ...extra },
+    });
+  };
+
   let body: Record<string, unknown>;
   try {
     body = await req.json();
   } catch {
+    await logFail("지원자", "잘못된 요청 본문");
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
 
@@ -106,6 +130,7 @@ export async function POST(req: Request) {
   const token = jar.get(APPLICANT_COOKIE_NAME)?.value;
   const session = await verifyApplicantToken(token);
   if (!session) {
+    await logFail("지원자", "Google 로그인 필요");
     return NextResponse.json(
       { error: "Google 로그인이 필요해요." },
       { status: 401 },
@@ -115,6 +140,11 @@ export async function POST(req: Request) {
     config.requireEmailAuth &&
     !session.email.endsWith(`@${ALLOWED_APPLICANT_DOMAIN}`)
   ) {
+    await logFail(
+      session.name ?? session.email,
+      `${ALLOWED_APPLICANT_DOMAIN} 도메인 아님`,
+      { email: session.email },
+    );
     return NextResponse.json(
       {
         error: `광주소프트웨어마이스터고(@${ALLOWED_APPLICANT_DOMAIN}) 계정으로만 지원할 수 있어요.`,
@@ -123,9 +153,13 @@ export async function POST(req: Request) {
     );
   }
   const verifiedEmail = session.email;
+  const applicantLabel = session.name ?? verifiedEmail;
 
   // 2. Privacy consent
   if (config.privacyPolicy.enabled && body.privacyAgreed !== true) {
+    await logFail(applicantLabel, "개인정보 동의 없음", {
+      email: verifiedEmail,
+    });
     return NextResponse.json(
       { error: "개인정보 수집 및 이용에 동의해야 지원할 수 있어요." },
       { status: 400 },
@@ -135,6 +169,9 @@ export async function POST(req: Request) {
   // 3. Validate each field per config
   const fields = body.fields as Record<string, unknown> | undefined;
   if (!fields || typeof fields !== "object") {
+    await logFail(applicantLabel, "입력 데이터 없음", {
+      email: verifiedEmail,
+    });
     return NextResponse.json(
       { error: "입력 데이터가 없어요." },
       { status: 400 },
@@ -144,7 +181,13 @@ export async function POST(req: Request) {
   for (const field of config.fields) {
     if (field.hidden) continue;
     const err = validateField(field, fields[field.id]);
-    if (err) return NextResponse.json({ error: err }, { status: 400 });
+    if (err) {
+      await logFail(applicantLabel, `필드 검증 실패: ${field.label}`, {
+        fieldId: field.id,
+        email: verifiedEmail,
+      });
+      return NextResponse.json({ error: err }, { status: 400 });
+    }
   }
 
   // 4. Check role status against dynamic role list (label or slug match)
@@ -156,12 +199,19 @@ export async function POST(req: Request) {
       (r) => r.label === roleValue || r.slug === roleValue.toLowerCase(),
     );
     if (!matched) {
+      await logFail(applicantLabel, `잘못된 직군: ${roleValue}`, {
+        email: verifiedEmail,
+      });
       return NextResponse.json(
         { error: "잘못된 직군이에요." },
         { status: 400 },
       );
     }
     if (!isRoleEffectivelyOpen(matched)) {
+      await logFail(applicantLabel, `${matched.label} 모집 마감 상태`, {
+        role: matched.label,
+        email: verifiedEmail,
+      });
       return NextResponse.json(
         { error: "해당 직군은 현재 모집 마감 상태예요." },
         { status: 400 },
@@ -192,21 +242,21 @@ export async function POST(req: Request) {
 
   const saved = await addApplication(app);
 
-  // Record the submission in the global activity log so admins can see
-  // it in the audit channel. Uses the applicant's name (not an admin id)
-  // as the actor and captures IP/device like session events.
-  const ip = getClientIp(req);
-  const ua = getUserAgent(req);
-  const device = parseDeviceLabel(ua);
+  // Record the successful submission in the audit log (ip/device captured
+  // at the top of the handler and reused for every outcome).
+  const actor = saved.name ?? applicantLabel;
+  const who =
+    verifiedEmail && verifiedEmail !== actor
+      ? `${actor} <${verifiedEmail}>`
+      : actor;
   await logAdminActivity({
-    adminId: saved.name ?? "지원자",
+    adminId: actor,
     action: "application.submit",
-    description: `${saved.name ?? "지원자"}${
-      saved.role ? ` (${saved.role})` : ""
-    } 지원 제출 · ${device} · ${ip}`,
+    description: `${who}${saved.role ? ` (${saved.role})` : ""} 지원 제출 · ${device} · ${ip}`,
     meta: {
       applicationId: saved.id,
       role: saved.role,
+      email: verifiedEmail,
       ip,
       userAgent: ua,
       device,
