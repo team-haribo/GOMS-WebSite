@@ -1,7 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useLayoutEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+} from "react";
+import AdminLogo from "@/components/AdminLogo";
 
 // useLayoutEffect warns on SSR but is required to prevent the initial-overview flash.
 // Fall back to useEffect during server render to silence the warning.
@@ -123,40 +130,29 @@ type Tab =
   | "roles"
   | "form"
   | "applications"
-  | "archives";
+  | "archives"
+  | "me"
+  | "logs"
+  | "accounts";
 
-function AdminLogo({ size = 32 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 512 512"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className="rounded-lg transition-transform group-hover:scale-105"
-    >
-      <defs>
-        <linearGradient id="adminLogoBg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#C4B5FD" />
-          <stop offset="50%" stopColor="#B486F9" />
-          <stop offset="100%" stopColor="#8B5CF6" />
-        </linearGradient>
-      </defs>
-      <rect width="512" height="512" rx="102.4" fill="url(#adminLogoBg)" />
-      <path
-        d="M202.619 149.841L251.528 159.933L292.206 151.015L321.833 151.015L331.238 152.423L349.344 157.82L358.984 160.637L364.628 162.983L374.033 167.912L389.317 182.696L401.309 197.011L405.776 205.225L410.479 215.785L414.947 225.172L416.593 232.447L420.59 257.792L422.471 283.372L423.647 301.676L437.755 327.49L438.225 329.837L438.46 335.704L433.993 347.672L429.995 352.601L424.352 359.171L421.53 362.457L417.141 365.742L407.266 371.375L405.541 371.375L402.484 370.905L399.428 370.201L397.312 368.793L395.901 366.681L395.43 358.467L396.371 350.254L399.428 343.214L390.257 333.357L383.203 325.613L380.382 321.623L373.798 318.103L331.238 299.799L325.595 299.564L320.892 300.503L303.963 304.727L287.503 306.135L270.103 303.554L267.987 304.492L271.044 354.947L270.103 361.284L265.871 369.262L260.698 374.895L256.465 377.476L251.998 379.119L240.006 380.057L229.19 379.823L225.192 378.415L221.665 376.068L220.49 373.252L220.019 370.436L220.96 366.916L222.136 363.865L228.249 358.702L233.657 354.478L214.376 313.41L206.852 307.308L154.182 285.718L146.422 280.086L141.719 273.046L123.144 273.28L115.854 273.28L109.506 272.342L103.392 269.291L101.041 269.056L73.295 271.168L66.4761 269.341L57.7761 262.485L55.1896 260.139L51.6625 255.68L47.4301 249.109L47.195 247.701L47.4301 245.589L48.1355 243.946L51.6626 240.895L63.8896 232.212L66.4761 212.265L70.4734 207.337L85.0518 194.43L85.7572 176.829L86.4626 173.544L87.8734 170.728L91.1653 168.146L94.2221 167.442L97.7491 168.146L103.157 173.544L104.568 173.544L106.214 172.84L108.565 164.157L109.036 162.514L110.917 161.106L114.48 160.323L118.676 161.575L133.96 171.432L141.014 171.197L178.871 151.954L194.625 149.372L202.619 149.841Z"
-        fill="white"
-      />
-      <path
-        d="M148.306 288.299L202.857 311.062L167.822 358.701L150.657 371.843L139.605 373.955L115.151 375.833L107.392 375.363L101.984 373.955L99.6325 371.843L98.2217 366.915L99.6325 361.752L107.392 355.885L124.557 348.845L138.9 326.785L148.306 288.299Z"
-        fill="white"
-      />
-      <path
-        d="M327.952 303.552L375.214 323.734L366.984 331.947L348.879 361.282L346.292 364.802L343.236 367.383L335.006 373.015L330.303 374.658L305.614 375.597L299.5 373.954L297.149 372.546L294.092 370.434L293.622 368.557V365.506L295.268 360.108L301.382 354.242L319.252 346.263L328.657 325.611L327.952 303.552Z"
-        fill="white"
-      />
-    </svg>
-  );
+interface AdminAccountSummary {
+  id: string;
+  status: "pending" | "approved" | "rejected";
+  role: "super" | "admin";
+  createdAt: string;
+  approvedAt?: string;
+  approvedBy?: string;
+  rejectedAt?: string;
+  rejectedBy?: string;
+}
+
+interface AdminActivity {
+  id: string;
+  adminId: string;
+  action: string;
+  description: string;
+  createdAt: string;
+  meta?: Record<string, unknown>;
 }
 
 const VALID_TABS: Tab[] = [
@@ -166,6 +162,9 @@ const VALID_TABS: Tab[] = [
   "form",
   "applications",
   "archives",
+  "me",
+  "logs",
+  "accounts",
 ];
 
 function readInitialTab(): Tab {
@@ -209,17 +208,24 @@ export default function AdminPage() {
   const [roleStatus, setRoleStatus] = useState<RoleStatus | null>(null);
   const [roles, setRoles] = useState<Role[]>([]);
   const [formConfig, setFormConfig] = useState<FormConfig | null>(null);
+  const [adminId, setAdminId] = useState<string | null>(null);
+  const [activity, setActivity] = useState<AdminActivity[]>([]);
+  const [allActivity, setAllActivity] = useState<AdminActivity[]>([]);
+  const [accounts, setAccounts] = useState<AdminAccountSummary[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [a, m, r, f, b] = await Promise.all([
+      const [a, m, r, f, b, me, logs, accts] = await Promise.all([
         fetch("/api/applications").then((r) => r.json()),
         fetch("/api/members").then((r) => r.json()),
         fetch("/api/roles").then((r) => r.json()),
         fetch("/api/form-config").then((r) => r.json()),
         fetch("/api/application-batches").then((r) => r.json()),
+        fetch("/api/admin/me").then((r) => r.json()).catch(() => null),
+        fetch("/api/admin/logs").then((r) => r.json()).catch(() => null),
+        fetch("/api/admin/accounts").then((r) => r.json()).catch(() => null),
       ]);
       setApplications(a.applications ?? []);
       setMembers(m.members ?? []);
@@ -228,6 +234,10 @@ export default function AdminPage() {
       setRoles(r.roles ?? []);
       setFormConfig(f.config ?? null);
       setBatches(b.batches ?? []);
+      setAdminId(me?.adminId ?? null);
+      setActivity(me?.activity ?? []);
+      setAllActivity(logs?.activity ?? []);
+      setAccounts(accts?.accounts ?? []);
     } catch (err) {
       console.error("[admin] load() failed", err);
     } finally {
@@ -285,6 +295,43 @@ export default function AdminPage() {
     }
     await load();
     return true;
+  }
+
+  async function setAccountStatus(
+    targetId: string,
+    status: "approved" | "rejected",
+    approvalPassword: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    const res = await fetch(
+      `/api/admin/accounts/${encodeURIComponent(targetId)}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status, approvalPassword }),
+      },
+    );
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      return { ok: false, error: d.error || "저장 실패" };
+    }
+    await load();
+    return { ok: true };
+  }
+
+  async function removeAccount(
+    targetId: string,
+    approvalPassword: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    const res = await fetch(
+      `/api/admin/accounts/${encodeURIComponent(targetId)}?approvalPassword=${encodeURIComponent(approvalPassword)}`,
+      { method: "DELETE" },
+    );
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      return { ok: false, error: d.error || "삭제 실패" };
+    }
+    await load();
+    return { ok: true };
   }
 
   async function deleteBatch(id: string) {
@@ -535,6 +582,49 @@ export default function AdminPage() {
         },
       ],
     },
+    {
+      title: "System",
+      items: [
+        {
+          key: "me",
+          label: "마이페이지",
+          count: null,
+          icon: (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+              <circle cx="12" cy="7" r="4" />
+            </svg>
+          ),
+        },
+        {
+          key: "accounts",
+          label: "계정 관리",
+          count:
+            accounts.filter((a) => a.status === "pending").length || null,
+          icon: (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+              <circle cx="8.5" cy="7" r="4" />
+              <line x1="20" y1="8" x2="20" y2="14" />
+              <line x1="23" y1="11" x2="17" y2="11" />
+            </svg>
+          ),
+        },
+        {
+          key: "logs",
+          label: "로그",
+          count: null,
+          icon: (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="16" y1="13" x2="8" y2="13" />
+              <line x1="16" y1="17" x2="8" y2="17" />
+            </svg>
+          ),
+        },
+      ],
+    },
   ];
 
   const navItems = navSections.flatMap((s) => s.items);
@@ -725,6 +815,28 @@ export default function AdminPage() {
               onRestoreOne={restoreApplication}
             />
           )}
+          {!loading && tab === "me" && (
+            <MyPageTab
+              adminId={adminId}
+              activity={activity}
+              onRefresh={load}
+            />
+          )}
+          {!loading && tab === "logs" && (
+            <LogsTab
+              currentAdminId={adminId}
+              activity={allActivity}
+              onRefresh={load}
+            />
+          )}
+          {!loading && tab === "accounts" && (
+            <AccountsTab
+              currentAdminId={adminId}
+              accounts={accounts}
+              onSetStatus={setAccountStatus}
+              onDelete={removeAccount}
+            />
+          )}
           {!loading && tab === "members" && meta && (
             <MembersTab
               members={members}
@@ -911,6 +1023,962 @@ function OverviewTab({
         </div>
       </div>
     </section>
+  );
+}
+
+function MyPageTab({
+  adminId,
+  activity,
+  onRefresh,
+}: {
+  adminId: string | null;
+  activity: AdminActivity[];
+  onRefresh: () => void;
+}) {
+  const [filter, setFilter] = useState<string>("all");
+
+  // Group by action category for filter chips
+  const categories = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const a of activity) {
+      const prefix = a.action.split(".")[0];
+      map.set(prefix, (map.get(prefix) ?? 0) + 1);
+    }
+    return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
+  }, [activity]);
+
+  const visible = useMemo(() => {
+    if (filter === "all") return activity;
+    return activity.filter((a) => a.action.startsWith(filter + "."));
+  }, [activity, filter]);
+
+  return (
+    <div className="space-y-6">
+      {/* Profile card */}
+      <section className="rounded-3xl bg-white border border-gray-100 p-6 sm:p-8 shadow-[0_12px_40px_-20px_rgba(180,134,249,0.25)]">
+        <div className="flex items-center gap-4">
+          <div className="shrink-0">
+            <AdminLogo size={56} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-bold tracking-[0.18em] text-[#B486F9] uppercase">
+              Admin Profile
+            </p>
+            <h2 className="mt-1 text-xl sm:text-2xl font-black text-[#1E1E1E] tracking-tight truncate">
+              {adminId ?? "—"}
+            </h2>
+            <p className="mt-1 text-xs text-gray-500">
+              GOMS 관리자 콘솔 세션
+            </p>
+          </div>
+          <div className="shrink-0 hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-600 text-[11px] font-bold">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            온라인
+          </div>
+        </div>
+      </section>
+
+      {/* Activity log */}
+      <section className="rounded-3xl bg-white border border-gray-100 p-6 sm:p-8">
+        <div className="flex items-end justify-between flex-wrap gap-3">
+          <div>
+            <p className="text-xs font-bold tracking-[0.18em] text-[#B486F9]">
+              ACTIVITY
+            </p>
+            <h3 className="mt-2 text-xl font-black text-[#1E1E1E]">
+              수정 기록
+            </h3>
+            <p className="mt-1 text-xs text-gray-400">
+              이 계정({adminId ?? "—"})이 수행한 모든 수정 작업 · 최대 500건까지
+              보관
+            </p>
+          </div>
+          <button
+            onClick={onRefresh}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-gray-500 hover:text-[#B486F9] hover:bg-[#B486F9]/10 transition-colors"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M23 4v6h-6M1 20v-6h6" />
+              <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
+            </svg>
+            새로고침
+          </button>
+        </div>
+
+        {/* Filter chips */}
+        {categories.length > 0 && (
+          <div className="mt-5 flex flex-wrap gap-2">
+            <button
+              onClick={() => setFilter("all")}
+              className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-colors ${
+                filter === "all"
+                  ? "bg-[#B486F9] text-white"
+                  : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+              }`}
+            >
+              전체 {activity.length}
+            </button>
+            {categories.map(([cat, count]) => (
+              <button
+                key={cat}
+                onClick={() => setFilter(cat)}
+                className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-colors ${
+                  filter === cat
+                    ? "bg-[#B486F9] text-white"
+                    : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                }`}
+              >
+                {CATEGORY_LABELS[cat] ?? cat} {count}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Timeline */}
+        <div className="mt-6">
+          {visible.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-10">
+              아직 기록된 작업이 없어요.
+            </p>
+          ) : (
+            <ol className="relative border-l border-gray-100 ml-3 space-y-4">
+              {visible.map((a) => {
+                const d = new Date(a.createdAt);
+                const cat = a.action.split(".")[0];
+                return (
+                  <li key={a.id} className="pl-5 relative">
+                    <span
+                      className="absolute -left-[5px] top-1.5 w-2.5 h-2.5 rounded-full border-2 border-white"
+                      style={{ background: CATEGORY_COLORS[cat] ?? "#B486F9" }}
+                    />
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span
+                        className="text-[9px] font-bold tracking-[0.14em] uppercase px-1.5 py-0.5 rounded"
+                        style={{
+                          background: `${CATEGORY_COLORS[cat] ?? "#B486F9"}15`,
+                          color: CATEGORY_COLORS[cat] ?? "#B486F9",
+                        }}
+                      >
+                        {a.action}
+                      </span>
+                      <span className="text-[11px] text-gray-400 tabular-nums">
+                        {d.toLocaleString("ko-KR", {
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm text-[#1E1E1E]">
+                      {a.description}
+                    </p>
+                    {cat === "session" && a.meta && (
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10px]">
+                        {typeof a.meta.device === "string" && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-gray-50 border border-gray-200 text-gray-600 font-semibold">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
+                              <line x1="12" y1="18" x2="12" y2="18" />
+                            </svg>
+                            {a.meta.device}
+                          </span>
+                        )}
+                        {typeof a.meta.ip === "string" && (
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-gray-50 border border-gray-200 text-gray-600 font-mono tabular-nums"
+                            title={
+                              typeof a.meta.userAgent === "string"
+                                ? a.meta.userAgent
+                                : undefined
+                            }
+                          >
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <circle cx="12" cy="12" r="10" />
+                              <line x1="2" y1="12" x2="22" y2="12" />
+                              <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
+                            </svg>
+                            {a.meta.ip}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+const CATEGORY_LABELS: Record<string, string> = {
+  application: "지원자",
+  batch: "모집 기록",
+  role: "직군",
+  member: "멤버",
+  form: "지원폼",
+  session: "세션",
+};
+
+const CATEGORY_COLORS: Record<string, string> = {
+  application: "#3B82F6",
+  batch: "#F5A623",
+  role: "#10B981",
+  member: "#8B5CF6",
+  form: "#EC4899",
+  session: "#6B7280",
+};
+
+/**
+ * Global admin audit log. Shows every recorded activity across all admins,
+ * with session grouping so the admin can see who logged in from which
+ * device/IP. Flags unseen devices as "새로운 기기" relative to earlier
+ * sessions by the same admin — useful for spotting credential sharing.
+ */
+function LogsTab({
+  currentAdminId,
+  activity,
+  onRefresh,
+}: {
+  currentAdminId: string | null;
+  activity: AdminActivity[];
+  onRefresh: () => void;
+}) {
+  const [adminFilter, setAdminFilter] = useState<string>("all");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+
+  // Compute session summary: unique (adminId, ip, device) tuples seen
+  const sessionSummary = useMemo(() => {
+    const seen = new Map<
+      string,
+      { adminId: string; ip: string; device: string; count: number; last: string }
+    >();
+    for (const row of activity) {
+      const ip = typeof row.meta?.ip === "string" ? row.meta.ip : "unknown";
+      const device =
+        typeof row.meta?.device === "string" ? row.meta.device : "unknown";
+      if (ip === "unknown" && device === "unknown") continue;
+      const key = `${row.adminId}::${ip}::${device}`;
+      const existing = seen.get(key);
+      if (existing) {
+        existing.count++;
+        if (row.createdAt > existing.last) existing.last = row.createdAt;
+      } else {
+        seen.set(key, {
+          adminId: row.adminId,
+          ip,
+          device,
+          count: 1,
+          last: row.createdAt,
+        });
+      }
+    }
+    return Array.from(seen.values()).sort((a, b) =>
+      a.last < b.last ? 1 : -1,
+    );
+  }, [activity]);
+
+  // For each admin, collect the set of (ip|device) pairs they've previously
+  // used so we can mark "new device" on their current session.login rows.
+  // Since activity is newest-first, walk it in reverse chronological order
+  // and check if each login's fingerprint is unseen.
+  const newDeviceLoginIds = useMemo(() => {
+    const seenPerAdmin = new Map<string, Set<string>>();
+    const flagged = new Set<string>();
+    // Iterate oldest → newest so the first time we see a fingerprint it
+    // gets added and future hits aren't flagged
+    const ordered = [...activity].sort((a, b) =>
+      a.createdAt < b.createdAt ? -1 : 1,
+    );
+    for (const row of ordered) {
+      if (row.action !== "session.login") continue;
+      const ip = typeof row.meta?.ip === "string" ? row.meta.ip : "";
+      const device =
+        typeof row.meta?.device === "string" ? row.meta.device : "";
+      if (!ip && !device) continue;
+      const key = `${ip}::${device}`;
+      const set = seenPerAdmin.get(row.adminId) ?? new Set<string>();
+      if (!set.has(key) && set.size > 0) {
+        // Admin has other fingerprints on file but this one is new
+        flagged.add(row.id);
+      }
+      set.add(key);
+      seenPerAdmin.set(row.adminId, set);
+    }
+    return flagged;
+  }, [activity]);
+
+  const adminIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const a of activity) set.add(a.adminId);
+    return Array.from(set).sort();
+  }, [activity]);
+
+  const categoryCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const a of activity) {
+      const prefix = a.action.split(".")[0];
+      map.set(prefix, (map.get(prefix) ?? 0) + 1);
+    }
+    return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
+  }, [activity]);
+
+  const visible = useMemo(() => {
+    return activity.filter((a) => {
+      if (adminFilter !== "all" && a.adminId !== adminFilter) return false;
+      if (categoryFilter !== "all" && !a.action.startsWith(categoryFilter + "."))
+        return false;
+      return true;
+    });
+  }, [activity, adminFilter, categoryFilter]);
+
+  const loginCount = activity.filter((a) => a.action === "session.login").length;
+  const uniqueDevices = new Set(
+    activity
+      .filter((a) => typeof a.meta?.device === "string")
+      .map((a) => a.meta!.device as string),
+  ).size;
+  const uniqueIps = new Set(
+    activity
+      .filter((a) => typeof a.meta?.ip === "string")
+      .map((a) => a.meta!.ip as string),
+  ).size;
+
+  return (
+    <div className="space-y-6">
+      {/* Stats */}
+      <section className="rounded-3xl bg-white border border-gray-100 p-6 sm:p-8">
+        <div className="flex items-end justify-between flex-wrap gap-3">
+          <div>
+            <p className="text-xs font-bold tracking-[0.18em] text-[#B486F9]">
+              AUDIT LOG
+            </p>
+            <h3 className="mt-2 text-xl font-black text-[#1E1E1E]">
+              시스템 로그
+            </h3>
+            <p className="mt-1 text-xs text-gray-400">
+              모든 관리자의 활동 · 로그인 기기/IP · 최대 500건까지 보관
+            </p>
+          </div>
+          <button
+            onClick={onRefresh}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-gray-500 hover:text-[#B486F9] hover:bg-[#B486F9]/10 transition-colors"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M23 4v6h-6M1 20v-6h6" />
+              <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
+            </svg>
+            새로고침
+          </button>
+        </div>
+
+        <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <StatCard label="전체 로그" value={activity.length} />
+          <StatCard label="로그인 수" value={loginCount} />
+          <StatCard label="고유 기기" value={uniqueDevices} />
+          <StatCard label="고유 IP" value={uniqueIps} />
+        </div>
+      </section>
+
+      {/* Seen devices per admin */}
+      {sessionSummary.length > 0 && (
+        <section className="rounded-3xl bg-white border border-gray-100 p-6 sm:p-8">
+          <p className="text-xs font-bold tracking-[0.18em] text-[#B486F9]">
+            SESSIONS
+          </p>
+          <h3 className="mt-2 text-xl font-black text-[#1E1E1E]">
+            로그인한 기기
+          </h3>
+          <p className="mt-1 text-xs text-gray-400">
+            같은 계정인데 기기나 IP가 다르면 누군가 자격증명을 공유하고 있을 수
+            있어요
+          </p>
+          <div className="mt-5 space-y-2">
+            {sessionSummary.map((s) => (
+              <div
+                key={`${s.adminId}-${s.ip}-${s.device}`}
+                className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100"
+              >
+                <div className="shrink-0 w-8 h-8 rounded-lg bg-[#B486F9]/10 text-[#B486F9] flex items-center justify-center font-black text-sm">
+                  {s.adminId.slice(0, 1).toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-[#1E1E1E]">
+                    {s.adminId}
+                    {s.adminId === currentAdminId && (
+                      <span className="ml-2 text-[10px] font-bold text-emerald-500">
+                        · 본인
+                      </span>
+                    )}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-gray-500">
+                    {s.device}{" "}
+                    <span className="text-gray-300">·</span>{" "}
+                    <span className="font-mono tabular-nums">{s.ip}</span>
+                  </p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase">
+                    Activity
+                  </p>
+                  <p className="text-sm font-black text-[#1E1E1E] tabular-nums">
+                    {s.count}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Filters + timeline */}
+      <section className="rounded-3xl bg-white border border-gray-100 p-6 sm:p-8">
+        <div className="flex flex-wrap items-center gap-2 mb-5">
+          <p className="text-[10px] font-bold tracking-[0.18em] text-gray-400 uppercase">
+            Filter
+          </p>
+          {/* Admin filter */}
+          <div className="flex gap-1.5 flex-wrap">
+            <FilterChip
+              active={adminFilter === "all"}
+              onClick={() => setAdminFilter("all")}
+            >
+              모든 관리자
+            </FilterChip>
+            {adminIds.map((aid) => (
+              <FilterChip
+                key={aid}
+                active={adminFilter === aid}
+                onClick={() => setAdminFilter(aid)}
+              >
+                {aid}
+              </FilterChip>
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 mb-5">
+          <p className="text-[10px] font-bold tracking-[0.18em] text-gray-400 uppercase">
+            Category
+          </p>
+          <div className="flex gap-1.5 flex-wrap">
+            <FilterChip
+              active={categoryFilter === "all"}
+              onClick={() => setCategoryFilter("all")}
+            >
+              전체 {activity.length}
+            </FilterChip>
+            {categoryCounts.map(([cat, count]) => (
+              <FilterChip
+                key={cat}
+                active={categoryFilter === cat}
+                onClick={() => setCategoryFilter(cat)}
+              >
+                {CATEGORY_LABELS[cat] ?? cat} {count}
+              </FilterChip>
+            ))}
+          </div>
+        </div>
+
+        {visible.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-10">
+            조건에 맞는 로그가 없어요.
+          </p>
+        ) : (
+          <ol className="relative border-l border-gray-100 ml-3 space-y-4">
+            {visible.map((a) => {
+              const d = new Date(a.createdAt);
+              const cat = a.action.split(".")[0];
+              const isNewDevice = newDeviceLoginIds.has(a.id);
+              return (
+                <li key={a.id} className="pl-5 relative">
+                  <span
+                    className="absolute -left-[5px] top-1.5 w-2.5 h-2.5 rounded-full border-2 border-white"
+                    style={{ background: CATEGORY_COLORS[cat] ?? "#B486F9" }}
+                  />
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span
+                      className="text-[9px] font-bold tracking-[0.14em] uppercase px-1.5 py-0.5 rounded"
+                      style={{
+                        background: `${CATEGORY_COLORS[cat] ?? "#B486F9"}15`,
+                        color: CATEGORY_COLORS[cat] ?? "#B486F9",
+                      }}
+                    >
+                      {a.action}
+                    </span>
+                    <span className="text-[10px] font-bold text-gray-500 px-1.5 py-0.5 rounded bg-gray-100">
+                      {a.adminId}
+                    </span>
+                    <span className="text-[11px] text-gray-400 tabular-nums">
+                      {d.toLocaleString("ko-KR", {
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                    {isNewDevice && (
+                      <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                        ⚠ 새로운 기기
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-sm text-[#1E1E1E]">{a.description}</p>
+                  {a.meta && (typeof a.meta.ip === "string" || typeof a.meta.device === "string") && (
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10px]">
+                      {typeof a.meta.device === "string" && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-gray-50 border border-gray-200 text-gray-600 font-semibold">
+                          {a.meta.device}
+                        </span>
+                      )}
+                      {typeof a.meta.ip === "string" && (
+                        <span
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-gray-50 border border-gray-200 text-gray-600 font-mono tabular-nums"
+                          title={
+                            typeof a.meta.userAgent === "string"
+                              ? a.meta.userAgent
+                              : undefined
+                          }
+                        >
+                          {a.meta.ip}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </section>
+    </div>
+  );
+}
+
+/**
+ * Account management tab — list all admin accounts by status and let the
+ * current admin approve / reject / delete via a password-gated dialog.
+ */
+function AccountsTab({
+  currentAdminId,
+  accounts,
+  onSetStatus,
+  onDelete,
+}: {
+  currentAdminId: string | null;
+  accounts: AdminAccountSummary[];
+  onSetStatus: (
+    targetId: string,
+    status: "approved" | "rejected",
+    approvalPassword: string,
+  ) => Promise<{ ok: boolean; error?: string }>;
+  onDelete: (
+    targetId: string,
+    approvalPassword: string,
+  ) => Promise<{ ok: boolean; error?: string }>;
+}) {
+  const [confirming, setConfirming] = useState<
+    | {
+        kind: "approve" | "reject" | "delete";
+        targetId: string;
+      }
+    | null
+  >(null);
+
+  const pending = accounts.filter((a) => a.status === "pending");
+  const approved = accounts.filter((a) => a.status === "approved");
+  const rejected = accounts.filter((a) => a.status === "rejected");
+
+  return (
+    <div className="space-y-6">
+      {/* Stats strip */}
+      <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <StatCard label="대기" value={pending.length} />
+        <StatCard label="승인됨" value={approved.length} />
+        <StatCard label="거부됨" value={rejected.length} />
+        <StatCard label="전체" value={accounts.length} />
+      </section>
+
+      {/* Pending */}
+      <AccountsSection
+        title="승인 대기"
+        subtitle="새로 가입을 신청한 계정 — 승인 암호를 입력해 허용하거나 거부할 수 있어요."
+        accounts={pending}
+        currentAdminId={currentAdminId}
+        renderActions={(acc) => (
+          <>
+            <button
+              onClick={() =>
+                setConfirming({ kind: "approve", targetId: acc.id })
+              }
+              className="px-3 py-1.5 rounded-lg text-[11px] font-bold text-white bg-[#B486F9] hover:bg-[#A070F0] transition-colors"
+            >
+              승인
+            </button>
+            <button
+              onClick={() =>
+                setConfirming({ kind: "reject", targetId: acc.id })
+              }
+              className="px-3 py-1.5 rounded-lg text-[11px] font-bold text-red-500 bg-red-50 hover:bg-red-100 transition-colors"
+            >
+              거부
+            </button>
+          </>
+        )}
+        emptyLabel="대기 중인 신청이 없어요."
+      />
+
+      {/* Approved */}
+      <AccountsSection
+        title="승인된 관리자"
+        subtitle="로그인이 가능한 활성 계정."
+        accounts={approved}
+        currentAdminId={currentAdminId}
+        renderActions={(acc) =>
+          acc.role === "super" || acc.id === currentAdminId ? (
+            <span className="text-[10px] text-gray-400 font-semibold">
+              {acc.role === "super" ? "SUPER" : "본인"}
+            </span>
+          ) : (
+            <button
+              onClick={() =>
+                setConfirming({ kind: "delete", targetId: acc.id })
+              }
+              className="px-3 py-1.5 rounded-lg text-[11px] font-bold text-red-500 hover:bg-red-50 transition-colors"
+            >
+              계정 삭제
+            </button>
+          )
+        }
+        emptyLabel="승인된 계정이 없어요."
+      />
+
+      {/* Rejected */}
+      {rejected.length > 0 && (
+        <AccountsSection
+          title="거부된 계정"
+          subtitle="다시 승인하거나 영구 삭제할 수 있어요."
+          accounts={rejected}
+          currentAdminId={currentAdminId}
+          renderActions={(acc) => (
+            <>
+              <button
+                onClick={() =>
+                  setConfirming({ kind: "approve", targetId: acc.id })
+                }
+                className="px-3 py-1.5 rounded-lg text-[11px] font-bold text-[#B486F9] hover:bg-[#B486F9]/10 transition-colors"
+              >
+                재승인
+              </button>
+              <button
+                onClick={() =>
+                  setConfirming({ kind: "delete", targetId: acc.id })
+                }
+                className="px-3 py-1.5 rounded-lg text-[11px] font-bold text-red-500 hover:bg-red-50 transition-colors"
+              >
+                계정 삭제
+              </button>
+            </>
+          )}
+          emptyLabel=""
+        />
+      )}
+
+      {confirming && (
+        <ApprovalPasswordDialog
+          kind={confirming.kind}
+          targetId={confirming.targetId}
+          onCancel={() => setConfirming(null)}
+          onConfirm={async (password) => {
+            const result =
+              confirming.kind === "delete"
+                ? await onDelete(confirming.targetId, password)
+                : await onSetStatus(
+                    confirming.targetId,
+                    confirming.kind === "approve" ? "approved" : "rejected",
+                    password,
+                  );
+            return result;
+          }}
+          onDone={() => setConfirming(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function AccountsSection({
+  title,
+  subtitle,
+  accounts,
+  currentAdminId,
+  renderActions,
+  emptyLabel,
+}: {
+  title: string;
+  subtitle: string;
+  accounts: AdminAccountSummary[];
+  currentAdminId: string | null;
+  renderActions: (acc: AdminAccountSummary) => React.ReactNode;
+  emptyLabel: string;
+}) {
+  return (
+    <section className="rounded-3xl bg-white border border-gray-100 p-6 sm:p-8">
+      <div className="flex items-baseline justify-between gap-3 flex-wrap">
+        <div>
+          <p className="text-xs font-bold tracking-[0.18em] text-[#B486F9] uppercase">
+            {title}
+          </p>
+          <p className="mt-1 text-xs text-gray-400">{subtitle}</p>
+        </div>
+        <span className="text-[10px] font-bold text-gray-400 tabular-nums">
+          {accounts.length}건
+        </span>
+      </div>
+
+      {accounts.length === 0 ? (
+        emptyLabel && (
+          <p className="mt-4 text-sm text-gray-400 text-center py-6">
+            {emptyLabel}
+          </p>
+        )
+      ) : (
+        <div className="mt-5 space-y-2">
+          {accounts.map((acc) => {
+            const d = new Date(acc.createdAt);
+            return (
+              <div
+                key={acc.id}
+                className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100"
+              >
+                <div className="shrink-0 w-9 h-9 rounded-lg bg-[#B486F9]/10 text-[#B486F9] flex items-center justify-center font-black">
+                  {acc.id.slice(0, 1).toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-[#1E1E1E] truncate">
+                    {acc.id}
+                    {acc.id === currentAdminId && (
+                      <span className="ml-2 text-[10px] font-bold text-emerald-500">
+                        · 본인
+                      </span>
+                    )}
+                    {acc.role === "super" && (
+                      <span className="ml-2 text-[10px] font-bold text-[#B486F9]">
+                        · SUPER
+                      </span>
+                    )}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-gray-500 tabular-nums">
+                    가입{" "}
+                    {d.toLocaleDateString("ko-KR", {
+                      month: "short",
+                      day: "numeric",
+                    })}
+                    {acc.approvedAt && (
+                      <>
+                        {" · "}
+                        승인{" "}
+                        {new Date(acc.approvedAt).toLocaleDateString(
+                          "ko-KR",
+                          { month: "short", day: "numeric" },
+                        )}
+                        {acc.approvedBy && ` (${acc.approvedBy})`}
+                      </>
+                    )}
+                    {acc.rejectedAt && (
+                      <>
+                        {" · "}
+                        거부{" "}
+                        {new Date(acc.rejectedAt).toLocaleDateString(
+                          "ko-KR",
+                          { month: "short", day: "numeric" },
+                        )}
+                        {acc.rejectedBy && ` (${acc.rejectedBy})`}
+                      </>
+                    )}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {renderActions(acc)}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Password-gated confirmation dialog for account mutations. The user must
+ * type the ADMIN_APPROVAL_PASSWORD — we don't check it client-side, we just
+ * forward to the backend which rejects with 401 on mismatch.
+ */
+function ApprovalPasswordDialog({
+  kind,
+  targetId,
+  onCancel,
+  onConfirm,
+  onDone,
+}: {
+  kind: "approve" | "reject" | "delete";
+  targetId: string;
+  onCancel: () => void;
+  onConfirm: (
+    password: string,
+  ) => Promise<{ ok: boolean; error?: string }>;
+  onDone: () => void;
+}) {
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const title =
+    kind === "approve"
+      ? `"${targetId}" 승인`
+      : kind === "reject"
+        ? `"${targetId}" 거부`
+        : `"${targetId}" 삭제`;
+  const ctaLabel =
+    kind === "approve" ? "승인" : kind === "reject" ? "거부" : "삭제";
+  const ctaColor =
+    kind === "approve"
+      ? "bg-[#B486F9] hover:bg-[#A070F0] shadow-sm shadow-[#B486F9]/25"
+      : "bg-red-500 hover:bg-red-600 shadow-sm shadow-red-500/25";
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!password) return;
+    setSubmitting(true);
+    setError(null);
+    const result = await onConfirm(password);
+    setSubmitting(false);
+    if (result.ok) {
+      onDone();
+    } else {
+      setError(result.error ?? "실패");
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in-up"
+      onClick={onCancel}
+    >
+      <form
+        onSubmit={submit}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-md rounded-3xl bg-white shadow-2xl p-6 sm:p-8 space-y-5"
+      >
+        <div>
+          <p className="text-[10px] font-bold tracking-[0.18em] text-[#B486F9] uppercase">
+            Approval Password Required
+          </p>
+          <h2 className="mt-1 text-xl font-black text-[#1E1E1E]">{title}</h2>
+          <p className="mt-2 text-sm text-gray-500 leading-relaxed">
+            계정 관리는 로그인 비밀번호와는 다른{" "}
+            <span className="font-bold text-[#1E1E1E]">승인 전용 암호</span>
+            를 알고 있어야만 가능해요. 암호는 서버에 저장된 환경변수예요.
+          </p>
+        </div>
+
+        <div>
+          <label className="block text-xs font-bold text-gray-600 mb-2 tracking-wider">
+            승인 암호
+          </label>
+          <div className="relative">
+            <input
+              type={showPassword ? "text" : "password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoFocus
+              required
+              className="w-full px-4 py-3 pr-12 rounded-xl border border-gray-200 bg-gray-50 text-sm focus:outline-none focus:border-[#B486F9] focus:bg-white focus:ring-2 focus:ring-[#B486F9]/20 transition-all"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              aria-label={showPassword ? "암호 숨기기" : "암호 보기"}
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-gray-400 hover:text-[#B486F9] hover:bg-[#B486F9]/10 transition-colors"
+            >
+              {showPassword ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24" />
+                  <line x1="1" y1="1" x2="23" y2="23" />
+                </svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {error && (
+          <p className="text-sm text-red-500 font-semibold">{error}</p>
+        )}
+
+        <div className="flex gap-2 pt-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={submitting}
+            className="flex-1 px-4 py-3 rounded-xl border border-gray-200 text-sm font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+          >
+            취소
+          </button>
+          <button
+            type="submit"
+            disabled={submitting || !password}
+            className={`flex-1 px-4 py-3 rounded-xl text-white text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${ctaColor}`}
+          >
+            {submitting ? "처리 중..." : ctaLabel}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function StatCard({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-2xl bg-[#F5F7FA] border border-gray-100 p-4">
+      <p className="text-[10px] font-bold tracking-[0.18em] text-gray-400 uppercase">
+        {label}
+      </p>
+      <p className="mt-1 text-2xl font-black text-[#1E1E1E] tabular-nums">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function FilterChip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-colors ${
+        active
+          ? "bg-[#B486F9] text-white"
+          : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 

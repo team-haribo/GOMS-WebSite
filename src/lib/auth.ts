@@ -1,5 +1,13 @@
-// Minimal HMAC-signed session cookie for single-admin auth.
-// Uses Web Crypto (available in both Node and Edge runtimes).
+// HMAC-signed session cookie for admin auth. Supports multiple accounts
+// stored in the admin-accounts KV row; legacy env-based single-admin is
+// still honored via automatic seeding on first credential check.
+import {
+  createAdminAccount,
+  findAdminAccount,
+  getAdminAccounts,
+  type AdminAccount,
+} from "./storage";
+import { hashPassword, verifyPassword } from "./password";
 
 const COOKIE_NAME = "goms_admin";
 const MAX_AGE_SEC = 60 * 60 * 24 * 7; // 7 days
@@ -108,16 +116,72 @@ export async function verifyApplicantToken(
 export const APPLICANT_MAX_AGE = APPLICANT_MAX_AGE_SEC;
 export const ALLOWED_APPLICANT_DOMAIN = "gsm.hs.kr";
 
-export function checkCredentials(id: string, password: string): boolean {
-  const adminId = process.env.ADMIN_ID;
-  const adminPassword = process.env.ADMIN_PASSWORD;
-  if (!adminId || !adminPassword) return false;
-  // Timing-safe compare via length check + constant-time loop
-  if (id.length !== adminId.length || password.length !== adminPassword.length)
-    return false;
-  let diff = 0;
-  for (let i = 0; i < id.length; i++) diff |= id.charCodeAt(i) ^ adminId.charCodeAt(i);
-  for (let i = 0; i < password.length; i++)
-    diff |= password.charCodeAt(i) ^ adminPassword.charCodeAt(i);
-  return diff === 0;
+/**
+ * Seeds the admin-accounts store with the env admin on first run. Idempotent
+ * — if any account already exists, does nothing. If the env admin already
+ * has an account row, also does nothing.
+ *
+ * Should be called before any credential check or account registration so
+ * the very first deployment is never left with zero admins.
+ */
+async function ensureEnvAdminSeeded(): Promise<void> {
+  const envId = process.env.ADMIN_ID;
+  const envPassword = process.env.ADMIN_PASSWORD;
+  if (!envId || !envPassword) return;
+  const existing = await findAdminAccount(envId);
+  if (existing) return;
+  const { hash, salt } = await hashPassword(envPassword);
+  const account: AdminAccount = {
+    id: envId,
+    passwordHash: hash,
+    passwordSalt: salt,
+    status: "approved",
+    role: "super",
+    createdAt: new Date().toISOString(),
+    approvedAt: new Date().toISOString(),
+    approvedBy: "system",
+  };
+  try {
+    await createAdminAccount(account);
+  } catch {
+    // Race-safe: if another request seeded it at the same time, ignore
+  }
+}
+
+export type CredentialResult =
+  | { ok: true; account: AdminAccount }
+  | { ok: false; reason: "invalid" | "pending" | "rejected" };
+
+/**
+ * Verifies credentials against the admin accounts store. The env admin is
+ * lazily seeded on first call so existing single-admin deployments keep
+ * working without a manual migration step.
+ */
+export async function checkCredentials(
+  id: string,
+  password: string,
+): Promise<CredentialResult> {
+  await ensureEnvAdminSeeded();
+  const account = await findAdminAccount(id);
+  if (!account) return { ok: false, reason: "invalid" };
+  const valid = await verifyPassword(
+    password,
+    account.passwordHash,
+    account.passwordSalt,
+  );
+  if (!valid) return { ok: false, reason: "invalid" };
+  if (account.status === "pending") return { ok: false, reason: "pending" };
+  if (account.status === "rejected") return { ok: false, reason: "rejected" };
+  return { ok: true, account };
+}
+
+/**
+ * Helper for new-account registration. Wraps ensureEnvAdminSeeded + returns
+ * the seeded total count so callers can know if this is the very first
+ * registration on a fresh deploy.
+ */
+export async function ensureSeededAndCount(): Promise<number> {
+  await ensureEnvAdminSeeded();
+  const list = await getAdminAccounts();
+  return list.length;
 }

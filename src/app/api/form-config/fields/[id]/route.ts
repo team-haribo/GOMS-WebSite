@@ -4,6 +4,7 @@ import {
   updateFormField,
   type FormField,
 } from "@/lib/storage";
+import { logAdminAction } from "@/lib/admin-session";
 
 export async function PATCH(
   req: Request,
@@ -37,6 +38,13 @@ export async function PATCH(
 
   try {
     const cfg = await updateFormField(id, patch);
+    const label = cfg.fields.find((f) => f.id === id)?.label ?? id;
+    await logAdminAction(
+      req,
+      "form.field.update",
+      `지원폼 필드 "${label}" 수정`,
+      { id, fields: Object.keys(patch) },
+    );
     return NextResponse.json({ config: cfg });
   } catch (err) {
     return NextResponse.json(
@@ -47,12 +55,15 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
   try {
     const cfg = await deleteFormField(id);
+    await logAdminAction(req, "form.field.delete", `지원폼 필드 "${id}" 삭제`, {
+      id,
+    });
     return NextResponse.json({ config: cfg });
   } catch (err) {
     return NextResponse.json(

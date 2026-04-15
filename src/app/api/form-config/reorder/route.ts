@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { reorderFormFields } from "@/lib/storage";
+import { logAdminAction } from "@/lib/admin-session";
 
 export async function POST(req: Request) {
   let body: { orderedIds?: unknown };
@@ -19,6 +20,12 @@ export async function POST(req: Request) {
   const ids = body.orderedIds.filter((x): x is string => typeof x === "string");
   try {
     const cfg = await reorderFormFields(ids);
+    await logAdminAction(
+      req,
+      "form.field.reorder",
+      `지원폼 필드 순서 변경 (${ids.length}개)`,
+      { count: ids.length },
+    );
     return NextResponse.json({ config: cfg });
   } catch (err) {
     return NextResponse.json(

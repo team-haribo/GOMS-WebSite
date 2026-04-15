@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { addExtraMember, getMembersMeta } from "@/lib/storage";
 import { getMembers } from "@/lib/getMembers";
+import { logAdminAction } from "@/lib/admin-session";
 
 // GET: return full members list (with meta + extras + hidden applied)
 export async function GET() {
@@ -40,6 +41,10 @@ export async function POST(req: Request) {
     avatar,
     generation,
     leader,
+  });
+  await logAdminAction(req, "member.addExtra", `외부 멤버 ${name} 추가`, {
+    login,
+    role,
   });
   return NextResponse.json({ meta: next });
 }

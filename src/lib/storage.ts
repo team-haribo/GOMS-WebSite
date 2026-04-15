@@ -170,6 +170,131 @@ export async function deleteApplicationBatch(id: string): Promise<boolean> {
   return true;
 }
 
+// ================= Admin accounts =================
+
+/**
+ * Multi-admin account storage. Accounts go through a pending → approved
+ * (or rejected) flow so self-registration can't grant immediate access.
+ *
+ * The first account is seeded automatically from the ADMIN_ID environment
+ * variable with super status and a hash of ADMIN_PASSWORD, so existing
+ * deployments continue working without a manual migration step.
+ */
+export type AdminAccountStatus = "pending" | "approved" | "rejected";
+
+export interface AdminAccount {
+  id: string; // login id (unique)
+  passwordHash: string; // base64url
+  passwordSalt: string; // base64url
+  status: AdminAccountStatus;
+  role: "super" | "admin";
+  createdAt: string;
+  approvedAt?: string;
+  approvedBy?: string;
+  rejectedAt?: string;
+  rejectedBy?: string;
+}
+
+export async function getAdminAccounts(): Promise<AdminAccount[]> {
+  return readJson<AdminAccount[]>("admin-accounts", []);
+}
+
+export async function saveAdminAccounts(list: AdminAccount[]): Promise<void> {
+  await writeJson("admin-accounts", list);
+}
+
+export async function findAdminAccount(
+  id: string,
+): Promise<AdminAccount | null> {
+  const list = await getAdminAccounts();
+  return list.find((a) => a.id.toLowerCase() === id.toLowerCase()) ?? null;
+}
+
+export async function createAdminAccount(account: AdminAccount): Promise<void> {
+  const list = await getAdminAccounts();
+  if (list.some((a) => a.id.toLowerCase() === account.id.toLowerCase())) {
+    throw new Error("이미 같은 아이디가 있어요.");
+  }
+  list.push(account);
+  await saveAdminAccounts(list);
+}
+
+export async function updateAdminAccount(
+  id: string,
+  patch: Partial<AdminAccount>,
+): Promise<AdminAccount | null> {
+  const list = await getAdminAccounts();
+  const idx = list.findIndex(
+    (a) => a.id.toLowerCase() === id.toLowerCase(),
+  );
+  if (idx === -1) return null;
+  const next = { ...list[idx], ...patch, id: list[idx].id };
+  list[idx] = next;
+  await saveAdminAccounts(list);
+  return next;
+}
+
+export async function deleteAdminAccount(id: string): Promise<boolean> {
+  const list = await getAdminAccounts();
+  const next = list.filter(
+    (a) => a.id.toLowerCase() !== id.toLowerCase(),
+  );
+  if (next.length === list.length) return false;
+  await saveAdminAccounts(next);
+  return true;
+}
+
+// ================= Admin activity log =================
+
+/**
+ * A single entry in the admin audit log. One row per mutation an admin
+ * performs through the admin panel (delete applicant, update role, etc.).
+ *
+ * The log is append-only from the caller's perspective but is trimmed to
+ * the most recent MAX_ACTIVITY_ENTRIES rows to keep the KV row small.
+ */
+export interface AdminActivity {
+  id: string;
+  adminId: string;
+  action: string; // machine key, e.g. "application.delete"
+  description: string; // human-readable Korean summary
+  createdAt: string; // ISO timestamp
+  meta?: Record<string, unknown>;
+}
+
+const MAX_ACTIVITY_ENTRIES = 500;
+
+export async function getAdminActivity(): Promise<AdminActivity[]> {
+  return readJson<AdminActivity[]>("admin-activity", []);
+}
+
+export async function logAdminActivity(entry: {
+  adminId: string;
+  action: string;
+  description: string;
+  meta?: Record<string, unknown>;
+}): Promise<void> {
+  try {
+    const list = await getAdminActivity();
+    const row: AdminActivity = {
+      id: crypto.randomUUID(),
+      adminId: entry.adminId,
+      action: entry.action,
+      description: entry.description,
+      createdAt: new Date().toISOString(),
+      meta: entry.meta,
+    };
+    list.unshift(row);
+    if (list.length > MAX_ACTIVITY_ENTRIES) {
+      list.length = MAX_ACTIVITY_ENTRIES;
+    }
+    await writeJson("admin-activity", list);
+  } catch (err) {
+    // Logging should never break the underlying mutation
+    console.error("[storage] logAdminActivity failed:", err);
+  }
+}
+
 /**
  * Restores applications from a batch back into the live applications list.
  *

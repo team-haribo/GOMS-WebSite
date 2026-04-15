@@ -5,6 +5,7 @@ import {
   toggleMemberHidden,
   updateMemberMeta,
 } from "@/lib/storage";
+import { logAdminAction } from "@/lib/admin-session";
 
 // PATCH: update meta for a given login (either org member or extra)
 export async function PATCH(
@@ -33,6 +34,12 @@ export async function PATCH(
   if (typeof body.leader === "boolean") patch.leader = body.leader;
 
   const next = await updateMemberMeta(login, patch);
+  await logAdminAction(
+    req,
+    "member.update",
+    `멤버 ${patch.name ?? login} 정보 수정`,
+    { login, fields: Object.keys(patch) },
+  );
   return NextResponse.json({ meta: next });
 }
 
@@ -47,11 +54,23 @@ export async function DELETE(
 
   if (type === "extra") {
     const next = await deleteExtraMember(login);
+    await logAdminAction(
+      req,
+      "member.deleteExtra",
+      `외부 멤버 ${login} 삭제`,
+      { login },
+    );
     return NextResponse.json({ meta: next });
   }
 
   // Org member → hide
   const next = await toggleMemberHidden(login);
+  await logAdminAction(
+    req,
+    "member.toggleHidden",
+    `멤버 ${login} 숨김 토글`,
+    { login },
+  );
   return NextResponse.json({ meta: next });
 }
 
@@ -65,10 +84,22 @@ export async function POST(
   const action = url.searchParams.get("action");
   if (action === "toggle-hidden") {
     const next = await toggleMemberHidden(login);
+    await logAdminAction(
+      req,
+      "member.toggleHidden",
+      `멤버 ${login} 숨김 토글`,
+      { login },
+    );
     return NextResponse.json({ meta: next });
   }
   if (action === "delete-meta") {
     const next = await deleteMemberMeta(login);
+    await logAdminAction(
+      req,
+      "member.deleteMeta",
+      `멤버 ${login} 메타 삭제`,
+      { login },
+    );
     return NextResponse.json({ meta: next });
   }
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });

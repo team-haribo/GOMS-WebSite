@@ -7,6 +7,7 @@ import {
   deleteRole,
   type Role,
 } from "@/lib/storage";
+import { logAdminAction } from "@/lib/admin-session";
 
 /** GET — return list of roles + legacy status map */
 export async function GET() {
@@ -59,6 +60,7 @@ export async function POST(req: Request) {
       openAt: typeof body.openAt === "string" ? body.openAt : null,
       closeAt: typeof body.closeAt === "string" ? body.closeAt : null,
     });
+    await logAdminAction(req, "role.create", `직군 "${label}" 생성`, { slug });
     return NextResponse.json({ roles: next });
   } catch (err) {
     return NextResponse.json(
@@ -86,6 +88,12 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "Invalid role" }, { status: 400 });
     }
     const next = await updateRole(target.slug, { open: body.open });
+    await logAdminAction(
+      req,
+      "role.toggle",
+      `직군 "${target.label}" ${body.open ? "모집 재개" : "모집 마감"}`,
+      { slug: target.slug, open: body.open },
+    );
     return NextResponse.json({ roles: next });
   }
 
@@ -121,6 +129,26 @@ export async function PATCH(req: Request) {
 
   try {
     const next = await updateRole(slug, patch);
+    const label =
+      next.find((r) => r.slug === slug)?.label ?? slug;
+    // If only `open` is in the patch, treat as a toggle; otherwise generic update
+    const onlyToggle =
+      Object.keys(patch).length === 1 && typeof patch.open === "boolean";
+    if (onlyToggle) {
+      await logAdminAction(
+        req,
+        "role.toggle",
+        `직군 "${label}" ${patch.open ? "모집 재개" : "모집 마감"}`,
+        { slug, open: patch.open },
+      );
+    } else {
+      await logAdminAction(
+        req,
+        "role.update",
+        `직군 "${label}" 정보 수정`,
+        { slug, fields: Object.keys(patch) },
+      );
+    }
     return NextResponse.json({ roles: next });
   } catch (err) {
     return NextResponse.json(
@@ -139,8 +167,16 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
   const slug = body.slug ?? "";
+  const beforeList = await getRoles();
+  const target = beforeList.find((r) => r.slug === slug);
   try {
     const next = await deleteRole(slug);
+    await logAdminAction(
+      req,
+      "role.delete",
+      `직군 "${target?.label ?? slug}" 삭제`,
+      { slug },
+    );
     return NextResponse.json({ roles: next });
   } catch (err) {
     return NextResponse.json(

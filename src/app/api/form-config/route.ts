@@ -6,6 +6,7 @@ import {
   type FormField,
   type FormFieldType,
 } from "@/lib/storage";
+import { logAdminAction } from "@/lib/admin-session";
 
 const VALID_TYPES: FormFieldType[] = [
   "text",
@@ -43,6 +44,18 @@ export async function PATCH(req: Request) {
   }
 
   const cfg = await updateFormSettings(patch);
+  const parts: string[] = [];
+  if (patch.requireEmailAuth !== undefined)
+    parts.push(
+      `학생 인증 필수 ${patch.requireEmailAuth ? "켜짐" : "꺼짐"}`,
+    );
+  if (patch.privacyPolicy) parts.push("개인정보 방침 수정");
+  await logAdminAction(
+    req,
+    "form.settings",
+    `지원폼 설정 수정 (${parts.join(", ") || "변경사항"})`,
+    { patch },
+  );
   return NextResponse.json({ config: cfg });
 }
 
@@ -100,6 +113,10 @@ export async function POST(req: Request) {
 
   try {
     const cfg = await addFormField(field);
+    await logAdminAction(req, "form.field.add", `지원폼 필드 "${label}" 추가`, {
+      id,
+      type,
+    });
     return NextResponse.json({ config: cfg });
   } catch (err) {
     return NextResponse.json(
