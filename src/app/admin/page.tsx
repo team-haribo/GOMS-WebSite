@@ -24,6 +24,7 @@ interface Application {
   custom?: Record<string, string>;
   privacyAgreed?: boolean;
   createdAt: string;
+  adminNote?: string;
 }
 
 interface ApplicationBatch {
@@ -248,6 +249,27 @@ export default function AdminPage() {
     if (!confirm("정말 삭제할까요?")) return;
     await fetch(`/api/applications/${id}`, { method: "DELETE" });
     load();
+  }
+
+  async function saveAppNote(id: string, note: string): Promise<boolean> {
+    const res = await fetch(`/api/applications/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ adminNote: note }),
+    });
+    if (!res.ok) {
+      alert("메모 저장 실패");
+      return false;
+    }
+    // Update local state in place to avoid jittery full reload while the
+    // admin is still typing / reviewing other cards.
+    const data = await res.json().catch(() => null);
+    if (data?.application) {
+      setApplications((prev) =>
+        prev.map((a) => (a.id === id ? data.application : a)),
+      );
+    }
+    return true;
   }
 
   async function closeRound(title: string, clearCurrent: boolean): Promise<boolean> {
@@ -692,6 +714,7 @@ export default function AdminPage() {
               roles={roles}
               onDelete={deleteApp}
               onCloseRound={closeRound}
+              onSaveNote={saveAppNote}
             />
           )}
           {!loading && tab === "archives" && (
@@ -1250,6 +1273,16 @@ function ArchivedApplicationCard({
             Object.entries(app.custom).map(([k, v]) => (
               <ReadOnlyField key={k} label={k} value={v} multiline />
             ))}
+          {app.adminNote && (
+            <div className="rounded-lg border border-[#B486F9]/20 bg-[#B486F9]/5 p-3">
+              <p className="text-[10px] font-bold tracking-[0.18em] text-[#B486F9] uppercase">
+                Admin Memo
+              </p>
+              <p className="mt-1 text-sm text-[#1E1E1E] whitespace-pre-wrap leading-relaxed">
+                {app.adminNote}
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -1281,16 +1314,123 @@ function ReadOnlyField({
   );
 }
 
+/**
+ * Inline, per-application memo editor for interview / review notes.
+ * Starts collapsed when there's nothing written, expands on click.
+ * Dirty state is tracked so the admin can see when a save is pending.
+ */
+function ApplicationNoteEditor({
+  value,
+  onSave,
+}: {
+  value: string;
+  onSave: (note: string) => Promise<boolean>;
+}) {
+  const [draft, setDraft] = useState(value);
+  const [open, setOpen] = useState(value.length > 0);
+  const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+
+  // If the parent value changes (e.g. another tab edited it), sync the draft
+  // when we're not mid-edit.
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+
+  const dirty = draft !== value;
+
+  async function save() {
+    if (!dirty || saving) return;
+    setSaving(true);
+    const ok = await onSave(draft);
+    setSaving(false);
+    if (ok) setSavedAt(Date.now());
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="mt-4 inline-flex items-center gap-1.5 text-xs font-bold text-gray-400 hover:text-[#B486F9] transition-colors"
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 20h9" />
+          <path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
+        </svg>
+        메모 추가
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-4 rounded-xl border border-[#B486F9]/20 bg-[#B486F9]/5 p-3">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="inline-flex items-center gap-1.5">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#B486F9" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
+          </svg>
+          <span className="text-[10px] font-bold tracking-[0.18em] text-[#B486F9] uppercase">
+            Admin Memo
+          </span>
+          <span className="text-[10px] text-gray-400">· 관리자에게만 보여요</span>
+        </div>
+        <div className="flex items-center gap-1.5 text-[10px]">
+          {dirty && !saving && (
+            <span className="text-amber-500 font-semibold">저장 안 됨</span>
+          )}
+          {saving && <span className="text-gray-400">저장 중...</span>}
+          {!dirty && savedAt && (
+            <span className="text-emerald-500 font-semibold">✓ 저장됨</span>
+          )}
+        </div>
+      </div>
+      <textarea
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={save}
+        placeholder="면접 때 기억해 둘 내용, 코멘트, 보충 질문 등을 자유롭게 적어주세요."
+        rows={3}
+        className="w-full resize-y px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-[#1E1E1E] placeholder:text-gray-400 focus:outline-none focus:border-[#B486F9] focus:ring-2 focus:ring-[#B486F9]/20 transition-all"
+      />
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            if (draft.length === 0) setOpen(false);
+            else setDraft(value);
+          }}
+          disabled={saving}
+          className="text-[11px] font-bold text-gray-400 hover:text-gray-600 transition-colors"
+        >
+          {draft.length === 0 ? "접기" : "취소"}
+        </button>
+        <button
+          type="button"
+          onClick={save}
+          disabled={!dirty || saving}
+          className="px-3 py-1.5 rounded-lg bg-[#B486F9] text-white text-[11px] font-bold hover:bg-[#A070F0] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          {saving ? "저장 중..." : "저장"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ApplicationsTab({
   applications,
   roles,
   onDelete,
   onCloseRound,
+  onSaveNote,
 }: {
   applications: Application[];
   roles: Role[];
   onDelete: (id: string) => void;
   onCloseRound: (title: string, clearCurrent: boolean) => Promise<boolean>;
+  onSaveNote: (id: string, note: string) => Promise<boolean>;
 }) {
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [roleFilter, setRoleFilter] = useState<string>("all");
@@ -1729,6 +1869,12 @@ function ApplicationsTab({
                   {new Date(app.createdAt).toLocaleString("ko-KR")}
                 </span>
               </div>
+              {/* Admin-only note editor — for interview prep, review, etc. */}
+              <ApplicationNoteEditor
+                key={app.id}
+                value={app.adminNote ?? ""}
+                onSave={(note) => onSaveNote(app.id, note)}
+              />
             </div>
             <button
               onClick={() => onDelete(app.id)}

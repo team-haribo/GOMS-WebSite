@@ -64,6 +64,8 @@ export interface Application {
   custom?: Record<string, string>;
   privacyAgreed?: boolean;
   createdAt: string;
+  // Admin-only — private notes taken during review/interview
+  adminNote?: string;
 }
 
 export async function getApplications(): Promise<Application[]> {
@@ -90,6 +92,29 @@ export async function deleteApplication(id: string): Promise<boolean> {
   if (next.length === list.length) return false;
   await writeJson("applications", next);
   return true;
+}
+
+/**
+ * Updates the admin-only note on a single application. Trims whitespace
+ * and stores `undefined` when the note is empty so the field doesn't
+ * linger as an empty string.
+ */
+export async function updateApplicationNote(
+  id: string,
+  note: string,
+): Promise<Application | null> {
+  const list = await getApplications();
+  const idx = list.findIndex((a) => a.id === id);
+  if (idx === -1) return null;
+  const trimmed = note.trim();
+  const next: Application = {
+    ...list[idx],
+    adminNote: trimmed.length > 0 ? trimmed : undefined,
+  };
+  const nextList = [...list];
+  nextList[idx] = next;
+  await writeJson("applications", nextList);
+  return next;
 }
 
 // ================= Application Batches (archives) =================
