@@ -507,9 +507,15 @@ function ApplicationStatusCard({
   app: MyApplication;
   roles: RoleSummary[];
 }) {
-  const c = STATUS_COLORS[app.status];
-  const created = new Date(app.createdAt);
   const isArchive = app.source === "archive";
+  // Archived round is *closed* — anyone not explicitly hired at close
+  // time didn't make the cut. Display those as 불합격 regardless of what
+  // their in-flight status happened to be (new / reviewing / passed).
+  // Raw data on disk is left untouched; this is purely a display coercion.
+  const displayStatus: ApplicationStatus =
+    isArchive && app.status !== "hired" ? "rejected" : app.status;
+  const c = STATUS_COLORS[displayStatus];
+  const created = new Date(app.createdAt);
   const roleTitle =
     roles.find((r) => r.label === app.role)?.title ?? app.role ?? null;
 
@@ -554,7 +560,7 @@ function ApplicationStatusCard({
               style={{ background: c.dot }}
             />
           </span>
-          {STATUS_LABELS[app.status]}
+          {STATUS_LABELS[displayStatus]}
         </span>
         {isArchive && (
           <span
@@ -616,7 +622,9 @@ function ApplicationStatusCard({
         className="mt-5 text-[15px] leading-relaxed"
         style={{ color: TOSS.textSecondary }}
       >
-        {STATUS_MESSAGES[app.status]}
+        {isArchive && displayStatus === "rejected" && app.status !== "rejected"
+          ? `${app.batchTitle ?? "이전 모집"}이 종료됐어요. 이번에는 함께하기 어려워졌지만, 보내주신 시간과 관심 진심으로 감사해요.`
+          : STATUS_MESSAGES[displayStatus]}
       </p>
 
       {/* Pipeline stepper */}
@@ -624,7 +632,7 @@ function ApplicationStatusCard({
         className="mt-6 pt-6"
         style={{ borderTop: `1px solid ${TOSS.border}` }}
       >
-        <PipelineProgress status={app.status} />
+        <PipelineProgress status={displayStatus} />
       </div>
     </div>
   );
