@@ -143,7 +143,7 @@ export default function Footer() {
               </li>
               <li>
                 <a
-                  href="https://github.com/team-haribo/GOMS-Web/issues"
+                  href="https://github.com/team-haribo/GOMS-WebSite/issues"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-2 text-white/60 hover:text-[#F5A623] transition-colors"
