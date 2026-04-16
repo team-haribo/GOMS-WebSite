@@ -44,20 +44,11 @@ export const metadata: Metadata = {
     siteName: "GOMS",
     type: "website",
     locale: "ko_KR",
-    images: [
-      {
-        url: "/goms-logo.png",
-        width: 1200,
-        height: 630,
-        alt: "GOMS - 광주소프트웨어마이스터고 외출제 통합 관리 시스템",
-      },
-    ],
   },
   twitter: {
-    card: "summary_large_image",
+    card: "summary",
     title: "GOMS - 외출제를 QR로 간편하게",
     description: "광주소프트웨어마이스터고등학교 외출제 통합 관리 시스템",
-    images: ["/goms-logo.png"],
   },
   icons: {
     icon: "/favicon.ico",
