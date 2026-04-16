@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import AdminLogo from "@/components/AdminLogo";
+import AdminBackdrop from "@/components/AdminBackdrop";
 
 export default function AdminRegisterPage() {
   const [name, setName] = useState("");
@@ -53,9 +54,11 @@ export default function AdminRegisterPage() {
 
   if (done) {
     return (
-      <main className="min-h-screen bg-[#FFF8EE] flex items-center justify-center px-6">
-        <div className="w-full max-w-md">
-          <div className="bg-white rounded-3xl p-8 sm:p-10 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.15)] border border-white text-center">
+      <main className="relative min-h-screen bg-[#F5F7FA] flex items-center justify-center px-6 overflow-hidden">
+        <AdminBackdrop />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/30 via-white/20 to-[#B486F9]/15" />
+        <div className="relative z-10 w-full max-w-md">
+          <div className="bg-white/95 backdrop-blur-xl rounded-3xl p-8 sm:p-10 shadow-[0_20px_60px_-20px_rgba(180,134,249,0.3)] border border-white text-center">
             <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#B486F9]/10 mb-4">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#B486F9" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M20 6L9 17l-5-5" />
@@ -82,8 +85,10 @@ export default function AdminRegisterPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#FFF8EE] flex items-center justify-center px-6">
-      <div className="w-full max-w-md">
+    <main className="relative min-h-screen bg-[#F5F7FA] flex items-center justify-center px-6 overflow-hidden">
+      <AdminBackdrop />
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/30 via-white/20 to-[#B486F9]/15" />
+      <div className="relative z-10 w-full max-w-md">
         <Link
           href="/admin/login"
           className="inline-flex items-center gap-2 mb-8 text-gray-500 hover:text-[#B486F9] transition-colors text-sm"
@@ -94,7 +99,7 @@ export default function AdminRegisterPage() {
           로그인으로
         </Link>
 
-        <div className="bg-white rounded-3xl p-8 sm:p-10 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.15)] border border-white">
+        <div className="bg-white/95 backdrop-blur-xl rounded-3xl p-8 sm:p-10 shadow-[0_20px_60px_-20px_rgba(180,134,249,0.3)] border border-white">
           <div className="flex items-center gap-2.5 mb-6">
             <AdminLogo size={36} />
             <div>
